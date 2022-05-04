@@ -12,6 +12,8 @@ import numpy as np
 from mpl_toolkits.axes_grid1 import ImageGrid
 import os
 
+# Look at https://machinelearningmastery.com/robust-regression-for-machine-learning-in-python/
+# for a robust regression, and an approach to compare all methods.
 def normalize(data):
     return (data - data.min())/ (data.max() - data.min())
 
