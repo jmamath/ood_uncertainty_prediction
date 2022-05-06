@@ -120,14 +120,14 @@ class Labelwise_H_distance:
       test_loader =  DataLoader(test_data, batch_size=512, shuffle=True)
       # import pdb; pdb.set_trace()
       # Training
-      if self.dataset_name == "CIFAR":
-          model = CifarResNet(BasicBlock, [1,1,1]).to(self.device)
+      if self.dataset_name == "CIFAR10":
+          model = CifarResNet(BasicBlock, [2,2,2]).to(self.device)
       if self.dataset_name == "MNIST":
           model = LeNet5().to(self.device)
       optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
       crit = nn.CrossEntropyLoss()
       _, _ = train_model(train_loader, model, crit, optimizer, None, self.n_epochs, self.device)
-      proximal_distance = evaluate_model(model, test_loader)      
+      proximal_distance = evaluate_model(model, test_loader, self.device)      
       return proximal_distance
     
     def compute_labeled_proxy_distance(self, A_k, B_m):
@@ -169,7 +169,7 @@ class Labelwise_H_distance:
       divergence_matrices = []
       source_matrix = self.compute_labeled_matrix_proxy_distance(source_data, source_data, source_data.num_class)
       divergence_matrices.append(source_matrix)
-      np.save('source_matrix', source_matrix)
+      # np.save('source_matrix', source_matrix)
       print("divergence matrix for origin computed")
       for corr in corruptions:
          # Reference to original data is mutated

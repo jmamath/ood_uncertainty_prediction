@@ -99,11 +99,10 @@ def train_regressor(regressor, architecture, train_loader, n_epochs, criterion, 
             logits = architecture(batch_x)
             score = compute_entropy(F.softmax(logits))
             acc = compute_accuracy(logits, batch_y)
-            # import pdb; pdb.set_trace()
-            # compute MC_sample Monte Carlo predictions       
+            # import pdb; pdb.set_trace()  
             ## We perform many sample            
             threshold = regressor(score)                       
-            # import pdb; pdb.set_trace()
+            import pdb; pdb.set_trace()
             loss = criterion(threshold[0], acc)
             # import pdb; pdb.set_trace()            
            # backward pass: compute gradient of the loss with respect to model parameters
@@ -195,8 +194,8 @@ def estimate_c_cifar(net, regressor, batch_size, base_path, corruptions, preproc
   for corruption in corruptions:
     # Reference to original data is mutated
     data = np.load(base_path + corruption + '.npy')
-    targets = torch.LongTensor(np.load(base_path + 'labels.npy'))
-    corrupted_data = MyData(data, targets, preprocess)
+    targets = torch.LongTensor(np.load(base_path + 'labels.npy')).squeeze()
+    corrupted_data = MyData(data, targets, "CIFAR10", preprocess)
 
     # import pdb; pdb.set_trace()
     test_loader = torch.utils.data.DataLoader(

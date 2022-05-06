@@ -64,8 +64,8 @@ class H_distance:
       labelAB = np.concatenate((labelA, labelB), 0)
       X_train, X_test, y_train, y_test = train_test_split(dataAB, labelAB, test_size=0.33, random_state=0)
       # import pdb; pdb.set_trace()
-      train_data = MyData(X_train, y_train, self.dataset, self.preprocess)
-      test_data = MyData(X_test, y_test, self.dataset, self.preprocess)
+      train_data = MyData(X_train, y_train, self.dataset_name, self.preprocess)
+      test_data = MyData(X_test, y_test, self.dataset_name, self.preprocess)
       return train_data, test_data
     
     def proximal_A_distance(self, train_data, test_data):
@@ -78,14 +78,14 @@ class H_distance:
       test_loader =  DataLoader(test_data, batch_size=512, shuffle=True)
       # import pdb; pdb.set_trace()
       # Training
-      if self.dataset_name == "CIFAR":
-          model = CifarResNet(BasicBlock, [1,1,1]).to(self.device)
+      if self.dataset_name == "CIFAR10":
+          model = CifarResNet(BasicBlock, [2,2,2]).to(self.device)
       if self.dataset_name == "MNIST":
           model = LeNet5().to(self.device)
       optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
       crit = nn.CrossEntropyLoss()
       _, _ = train_model(train_loader, model, crit, optimizer, None, self.n_epochs, self.device)
-      proximal_distance = evaluate_model(model, test_loader)
+      proximal_distance = evaluate_model(model, test_loader, self.device)
       return proximal_distance
     
     def compute_proxy_distance(self, A, B):

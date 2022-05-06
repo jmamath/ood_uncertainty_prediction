@@ -114,7 +114,7 @@ def main():
             regressor = linearRegression(regressor_input, 1).to(device)
             optimizer = torch.optim.Adam(regressor.parameters(), lr=0.01)
             crit = nn.L1Loss()
-            n_epochs = 50
+            n_epochs = 20
             print("learning a threshold function ...")
             _, loss_mae = train_regressor(regressor, model, val_loader, n_epochs, crit, optimizer, device)            
             _, corruption_estimation = estimate_c_mnist(model, regressor, regressor_input, corruption_dir, corruptions, preprocess, device)            

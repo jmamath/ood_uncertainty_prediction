@@ -11,19 +11,16 @@ from torch.utils.data import DataLoader, Dataset
 import torch.nn.functional as F
 
 import numpy as np
-import torch.nn as nn
-
-from sklearn.model_selection import train_test_split
 from tqdm import trange
 from PIL import Image
 
-def get_device():
-    if torch.cuda.is_available():
-        device = 'cuda'
-    else:
-        device = 'cpu'
-    return device
-device = get_device()
+# def get_device():
+#     if torch.cuda.is_available():
+#         device = 'cuda'
+#     else:
+#         device = 'cpu'
+#     return device
+# device = get_device()
 
 ######################## DATASET CLASS ######################## 
 # @title Dataset class
@@ -50,7 +47,7 @@ class MyData(Dataset):
         X, y = self.data[index], self.targets[index]  
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image, this allow preprocessing specific to all dataset to be applied
-        if self.dataset_name == "CIFAR":
+        if self.dataset_name == "CIFAR10":
             X = Image.fromarray(X)
         if self.dataset_name == "MNIST":
             X = Image.fromarray(X.squeeze())
@@ -70,7 +67,7 @@ def compute_accuracy(pred, y):
   accuracy = correct / total 
   return accuracy  
 
-def evaluate_model(model, loader):
+def evaluate_model(model, loader, device):
   with torch.no_grad():       
     acc_final = []
     for x, y in loader: # batch_level   
