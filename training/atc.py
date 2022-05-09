@@ -102,7 +102,7 @@ def train_regressor(regressor, architecture, train_loader, n_epochs, criterion, 
             # import pdb; pdb.set_trace()  
             ## We perform many sample            
             threshold = regressor(score)                       
-            import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
             loss = criterion(threshold[0], acc)
             # import pdb; pdb.set_trace()            
            # backward pass: compute gradient of the loss with respect to model parameters
