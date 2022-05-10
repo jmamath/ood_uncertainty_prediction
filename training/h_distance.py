@@ -12,10 +12,11 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 import torch.nn as nn
+import copy
 
 ######################## H-DISTANCE ########################
 class H_distance:
-    def __init__(self, dataset_name, preprocess, n_epochs, device):
+    def __init__(self, dataset_name, preprocess, n_epochs, device, pretrained_model=None):
         """
         Class to compute the Labelwise H-ditance
 
@@ -31,6 +32,7 @@ class H_distance:
             whether to use the cpu or the gpu
 
         """
+        self.pretrained_model = pretrained_model
         self.dataset_name = dataset_name
         self.preprocess = preprocess
         self.n_epochs = n_epochs
@@ -79,14 +81,32 @@ class H_distance:
       # import pdb; pdb.set_trace()
       # Training
       if self.dataset_name == "CIFAR10":
-          model = CifarResNet(BasicBlock, [2,2,2]).to(self.device)
+          if self.pretrained_model == None:
+              model = CifarResNet(BasicBlock, [2,2,2], num_classes=2).to(self.device)
+              optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+          else:
+              model = self.prepare_pretrained_model()
+              optimizer = torch.optim.Adam(model.fc.parameters(), lr=0.01)
       if self.dataset_name == "MNIST":
-          model = LeNet5().to(self.device)
-      optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+          if self.pretrained_model == None:
+              model = LeNet5(num_classes=2).to(self.device)
+              optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+          else:
+              model = self.prepare_pretrained_model()
+              optimizer = torch.optim.Adam(model.fc.parameters(), lr=0.01)
       crit = nn.CrossEntropyLoss()
       _, _ = train_model(train_loader, model, crit, optimizer, None, self.n_epochs, self.device)
       proximal_distance = evaluate_model(model, test_loader, self.device)
       return proximal_distance
+  
+    def prepare_pretrained_model(self):
+        model = copy.deepcopy(self.pretrained_model)
+        for param in model.parameters():
+            param.requires_grad = False    
+        # Parameters of newly constructed modules have requires_grad=True by default
+        num_ftrs = model.fc.in_features
+        model.fc = nn.Linear(num_ftrs, 2).to(self.device)
+        return model
     
     def compute_proxy_distance(self, A, B):
       """
@@ -141,5 +161,5 @@ class H_distance:
         h_distance = self.compute_proxy_distance(source_data, corrupted_data)
         h_distances.append(h_distance)
         # np.save("{}".format(corruption), h_distance)
-        print("divergence matrix for {}  computed".format(corruption))
+        print("h-distance for {}  computed".format(corruption))
       return h_distances 

@@ -30,6 +30,7 @@ def main():
     
     # Set device
     device = torch.device("cuda:" + str(config.device)) if torch.cuda.is_available() else torch.device("cpu")
+    print(device)
     ######################## TRAINING PROCESS ######################## 
     preprocess = transforms.Compose(
     [transforms.ToTensor(),
@@ -74,10 +75,10 @@ def main():
     
     ######################## COMPUTE H-DISTANCE ########################
     if config.algorithm == "H-distance":
-        mnist_h_distances_loc = os.path.join(mnist_path, "mnist_h_distances.npy")
+        mnist_h_distances_loc = os.path.join(mnist_path, "mnist_h_distances_pretrained.npy")
         mnist_h_distances_path = Path(mnist_h_distances_loc)
         if not mnist_h_distances_path.is_file():
-            h_dis = H_distance('MNIST', preprocess, n_epochs=10, device=device)
+            h_dis = H_distance('MNIST', preprocess, n_epochs=10, device=device, pretrained_model=model)
             h_distances = h_dis.distances_mnist_c(train_data, corruption_dir, corruptions)
             np.save(mnist_h_distances_path, h_distances)
 

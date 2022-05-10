@@ -20,7 +20,7 @@ from training.utils import MyData, train_model, test, test_c_cifar
 from training.labelwise_h_distance import Labelwise_H_distance, distances_c
 from training.h_distance import H_distance
 from training.atc import linearRegression, train_regressor, estimate_c_cifar, estimate_target_risk
-
+from training.otd_distance import compute_otdd_cifar
 # def get_device():
 #     if torch.cuda.is_available():
 #         device = 'cuda'
@@ -32,10 +32,12 @@ from training.atc import linearRegression, train_regressor, estimate_c_cifar, es
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--algorithm', required=True, choices=["H-distance", "ATC", "Labelwise-H-distance"])
-    parser.add_argument('--device', required=True, choices=["cuda:0", "cuda:1"])
-    config = parser.parse_args()
-    device = config.device
+    parser.add_argument('--algorithm', required=True, choices=["H-distance", "ATC", "Labelwise-H-distance", "OTDD"])
+    parser.add_argument('--device', type=int, default=0)
+    config = parser.parse_args()    
+    
+    # Set device
+    device = torch.device("cuda:" + str(config.device)) if torch.cuda.is_available() else torch.device("cpu")
     ######################## TRAINING PROCESS ######################## 
     preprocess = transforms.Compose(
         [transforms.ToTensor(),
@@ -45,7 +47,7 @@ def main():
     train_data = MyData(train_data.data, train_data.targets, 'CIFAR10', preprocess)
     
     test_data = datasets.CIFAR10('../data/cifar', train=False, transform=preprocess, download=False)
-    test_data = MyData(test_data.data, test_data.targets, 'CIFAR10', preprocess)
+    test_data = MyData(test_data.data, torch.LongTensor(test_data.targets), 'CIFAR10', preprocess)
     
     train_loader = DataLoader(train_data, batch_size=512, shuffle=True)
     test_loader = DataLoader(test_data, batch_size=512, shuffle=True)
@@ -71,30 +73,28 @@ def main():
         model.load_state_dict(torch.load(os.path.join(cifar10_path,"cifar10_model")))
 
     
-    cifar10_accuracies_loc = os.path.join(cifar10_path, "cifar10_accuracies")
+    cifar10_accuracies_loc = os.path.join(cifar10_path, "cifar10_accuracies.npy")
     cifar10_accuracies_path = Path(cifar10_accuracies_loc)
-    if not cifar10_accuracies_path:
+    if not cifar10_accuracies_path.is_file():
         print("Computing accuracies on corrupted domains...")
         iid_acc = [test(model, test_loader)]
         ood_acc = test_c_cifar(model, base_c_path, corruptions, preprocess)
         ood_acc = iid_acc + ood_acc
-        accuracies_path = Path(os.path.join(cifar10_path, "cifar10_accuracies"))
-        np.save(accuracies_path, np.array(ood_acc))
+        np.save(cifar10_accuracies_path, np.array(ood_acc))
     
     ######################## COMPUTE H-DISTANCE ########################
     if config.algorithm == "H-distance":
-        cifar10_h_distances_loc = os.path.join(cifar10_path, "cifar10_h_distances")
+        cifar10_h_distances_loc = os.path.join(cifar10_path, "cifar10_h_distances.npy")
         cifar10_h_distances_path = Path(cifar10_h_distances_loc)
         if not cifar10_h_distances_path.is_file():
             h_dis = H_distance('CIFAR10', preprocess, n_epochs=10, device=device)
             h_distances = h_dis.distances_cifar10c(train_data, base_c_path, corruptions)
             h_distances = np.array(h_distances)
-            h_distances_path = Path(os.path.join(cifar10_path, "cifar10_h_distances"))
-            np.save(h_distances_path, h_distances)
+            np.save(cifar10_h_distances_path, h_distances)
 
     ######################## COMPUTE LABELWISE H-DISTANCE ########################
     if config.algorithm == "Labelwise-H-distance":
-        cifar10_labelwise_h_distances_loc = os.path.join(cifar10_path, "cifar10_labelwise_h_distances")
+        cifar10_labelwise_h_distances_loc = os.path.join(cifar10_path, "cifar10_labelwise_h_distances.npy")
         cifar10_labelwise_h_distances_path = Path(cifar10_labelwise_h_distances_loc)
         if not cifar10_labelwise_h_distances_path.is_file():
             extended_h = Labelwise_H_distance('CIFAR10', preprocess, id_label_fraction=0.5, ood_label_fraction=0.1, n_epochs=10, device=device)
@@ -102,12 +102,11 @@ def main():
             divergence_matrices_path = Path(os.path.join(cifar10_path, "divergence_matrices_cifar10"))
             np.save(divergence_matrices_path, divergence_matrices)
             labelwise_h_distances = distances_c(divergence_matrices)
-            labelwise_h_distances_path = Path(os.path.join(cifar10_path, "cifar10_labelwise_h_distances"))
-            np.save(labelwise_h_distances_path, labelwise_h_distances)
+            np.save(cifar10_labelwise_h_distances_path, labelwise_h_distances)
             
     ######################## COMPUTE AVERAGE THRESHOLD CONFIDENCE ########################
     if config.algorithm == "ATC":
-        cifar10_atc_loc = os.path.join(cifar10_path, "cifar10_atc")
+        cifar10_atc_loc = os.path.join(cifar10_path, "cifar10_atc.npy")
         cifar10_atc_path = Path(cifar10_atc_loc)
         if not cifar10_atc_path.is_file():
             for param in model.parameters():
@@ -124,8 +123,15 @@ def main():
             _, corruption_estimation = estimate_c_cifar(model, regressor, regressor_input, base_c_path, corruptions, preprocess, device)            
             iid_est = estimate_target_risk(test_loader, model, regressor, device)
             corruption_estimation = [iid_est] + corruption_estimation
-            cifar10_atc_path = Path(os.path.join(cifar10_path, "cifar10_atc"))
             np.save(cifar10_atc_path, corruption_estimation)
+            
+    ######################## COMPUTE OPTIMAL TRANSPORT DATASET DISTANCE ########################
+    if config.algorithm == "OTDD":
+        cifar10_otdd_loc = os.path.join(cifar10_path, "cifar10_otdd.npy")
+        cifar10_otdd_path = Path(cifar10_otdd_loc)
+        if not cifar10_otdd_path.is_file():
+            otdd = compute_otdd_cifar(test_data, 5000, base_c_path, corruptions, preprocess, device)
+            np.save(cifar10_otdd_path, otdd)
             
 
 

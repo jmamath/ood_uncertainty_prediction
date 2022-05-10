@@ -30,8 +30,6 @@ class MyData(Dataset):
         """"Initialization, here display serves to show an example
         if false, it means that we intend to feed the data to a model"""
         self.targets = targets
-        # if not isinstance(data, torch.Tensor):
-        #     data = torch.Tensor(data)
         self.data = data
         self.preprocess = preprocess
         self.dataset_name = dataset_name

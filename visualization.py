@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.axes_grid1 import ImageGrid
 import os
+from pathlib import Path
 
 # Look at https://machinelearningmastery.com/robust-regression-for-machine-learning-in-python/
 # for a robust regression, and an approach to compare all methods.
@@ -23,7 +24,7 @@ def plot_distance_to_acc(distance, accuracies, plot_name):
     plt.ylim([0,1])
     plt.ylabel("| acc(T)-acc(S) |")
     plt.xlabel("Dataset distance")
-    plt.title("Loss of performance as dataset shifts")
+    plt.title("{}".format(plot_name))
     # plt.savefig("{}".format(plot_name), dpi=200)
     plt.show()
 
@@ -36,21 +37,34 @@ def plot_atc_differences(estimation, accuracies, plot_name):
     plt.ylim([0,1])
     plt.ylabel("| acc(T)-acc(S) |")
     plt.xlabel("ATC")
-    plt.title("Loss of performance as dataset shifts")
+    plt.title("{}".format(plot_name))
     # plt.savefig("{}".format(plot_name), dpi=200)
     plt.show()
     
     
-accuracies = np.load("mnist_accuracies.npy")
-h_distances = np.load("mnist_h_distances.npy")
-labelwise_h_distances = np.load("mnist_labelwise_h_distances.npy")
-otdd = np.load("mnist_otdd.npy")
-atc = np.load("mnist_atc.npy")
+mnist_accuracies = np.load("mnist_accuracies.npy")
+mnist_h_distances = np.load("mnist_h_distances.npy")
+mnist_labelwise_h_distances = np.load("mnist_labelwise_h_distances.npy")
+mnist_otdd = np.load("mnist_otdd.npy")
+mnist_atc = np.load("mnist_atc.npy")
 
-plot_distance_to_acc(h_distances, accuracies, "mnist_h_distance_plot")
-plot_distance_to_acc(-labelwise_h_distances, accuracies, "mnist_labelwise_h_distance_plot")
-plot_distance_to_acc(otdd, accuracies, "mnist_otdd")
-plot_atc_differences(atc, accuracies, "mnist_atc_plot")
+cifar10_accuracies = np.load("cifar10_accuracies.npy")
+cifar10_h_distances = np.load("cifar10_h_distances.npy")
+cifar10_labelwise_h_distances = np.load("cifar10_labelwise_h_distances.npy")
+cifar10_otdd = np.load("cifar10_otdd.npy")
+cifar10_atc = np.load("cifar10_atc.npy")
+
+
+
+plot_distance_to_acc(mnist_h_distances, mnist_accuracies, "mnist_h_distance_plot")
+plot_distance_to_acc(-mnist_labelwise_h_distances, mnist_accuracies, "mnist_labelwise_h_distance_plot")
+plot_distance_to_acc(mnist_otdd, mnist_accuracies, "mnist_otdd")
+plot_atc_differences(mnist_atc, mnist_accuracies, "mnist_atc_plot")
+
+plot_distance_to_acc(cifar10_h_distances, cifar10_accuracies, "cifar10_h_distances")
+plot_distance_to_acc(cifar10_labelwise_h_distances, cifar10_accuracies, "cifar10_labelwise_h_distances")
+plot_distance_to_acc(cifar10_otdd, cifar10_accuracies, "cifar10_otdd")
+plot_atc_differences(cifar10_atc, cifar10_accuracies, "cifar10_atc")
 
 
 from sklearn.model_selection import cross_val_score
@@ -82,27 +96,27 @@ def plot_best_fit(X, y, model):
 model = LinearRegression()
 model = HuberRegressor()
 # evaluate model
-h_distance_prediction = evaluate_model(h_distances[:,np.newaxis], accuracies, model)
-labelwise_h_distance_prediction = evaluate_model(-labelwise_h_distances[:,np.newaxis], accuracies, model)
-otdd_prediction = evaluate_model(otdd[:,np.newaxis], accuracies, model)
-atc_prediction = evaluate_model(atc[:,np.newaxis], accuracies, model)
+h_distance_prediction = evaluate_model(cifar10_h_distances[:,np.newaxis], cifar10_accuracies, model)
+labelwise_h_distance_prediction = evaluate_model(-cifar10_labelwise_h_distances[:,np.newaxis], cifar10_accuracies, model)
+otdd_prediction = evaluate_model(cifar10_otdd[:,np.newaxis], cifar10_accuracies, model)
+atc_prediction = evaluate_model(cifar10_atc[:,np.newaxis], cifar10_accuracies, model)
 
 
 print('H-distance Prediction - Mean MAE: %.3f (%.3f)' % (np.mean(h_distance_prediction), np.std(h_distance_prediction)))
 # plot the line of best fit
-plot_best_fit(h_distances[:,np.newaxis], accuracies, model)
+plot_best_fit(cifar10_h_distances[:,np.newaxis], cifar10_accuracies, model)
 
 print('Labelwise H-distance Prediction - Mean MAE: %.3f (%.3f)' % (np.mean(labelwise_h_distance_prediction), np.std(labelwise_h_distance_prediction)))
 # plot the line of best fit
-plot_best_fit(labelwise_h_distances[:,np.newaxis], accuracies, model)
+plot_best_fit(cifar10_labelwise_h_distances[:,np.newaxis], cifar10_accuracies, model)
 
 print('OTDD Prediction - Mean MAE: %.3f (%.3f)' % (np.mean(otdd_prediction), np.std(otdd_prediction)))
 # plot the line of best fit
-plot_best_fit(otdd[:,np.newaxis], accuracies, model)
+plot_best_fit(cifar10_otdd[:,np.newaxis], cifar10_accuracies, model)
 
 print('ATC Prediction - Mean MAE: %.3f (%.3f)' % (np.mean(atc_prediction), np.std(atc_prediction)))
 # plot the line of best fit
-plot_best_fit(atc[:,np.newaxis], accuracies, model)
+plot_best_fit(cifar10_atc[:,np.newaxis], cifar10_accuracies, model)
 
 results = dict()
 results["H-distance"] = h_distance_prediction

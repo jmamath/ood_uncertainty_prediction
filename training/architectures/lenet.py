@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 # @title Vanila LeNet-5
 class LeNet5(nn.Module):
-    def __init__(self, name="Softmax"):
+    def __init__(self, name="Softmax", num_classes=10):
         """
         You will change the filters and channels depending on the dataset to fit
         i.e MNIST or CIFAR
@@ -22,7 +22,7 @@ class LeNet5(nn.Module):
         self.pool2 = nn.MaxPool2d(2)
         self.fc1 = nn.Linear(256, 120, bias=False)   # 256 vs 400 MNIST vs CIFAR
         self.fc2 = nn.Linear(120, 84, bias=False)        
-        self.fc = nn.Linear(84, 10, bias=False) 
+        self.fc = nn.Linear(84, num_classes, bias=False) 
         self.name = name       
 
     def forward(self, x):
@@ -40,7 +40,7 @@ class LeNet5(nn.Module):
     
 # @title MC_Dropout LeNet-5
 class LeNet5Dropout(nn.Module):
-    def __init__(self, name="Dropout"):
+    def __init__(self, name="Dropout", num_classes=10):
         """
         You will change the filters and channels depending on the dataset to fit
         i.e MNIST or CIFAR
@@ -55,7 +55,7 @@ class LeNet5Dropout(nn.Module):
         self.fc1 = nn.Linear(400, 120, bias=False)   
         self.dropout3 = nn.Dropout(0.5)
         self.fc2 = nn.Linear(120, 84, bias=False)        
-        self.fc = nn.Linear(84, 10, bias=False) 
+        self.fc = nn.Linear(84, num_classes, bias=False) 
         self.name = name       
 
     def forward(self, x):
