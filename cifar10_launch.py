@@ -77,29 +77,29 @@ def main():
     cifar10_accuracies_path = Path(cifar10_accuracies_loc)
     if not cifar10_accuracies_path.is_file():
         print("Computing accuracies on corrupted domains...")
-        iid_acc = [test(model, test_loader)]
-        ood_acc = test_c_cifar(model, base_c_path, corruptions, preprocess)
+        iid_acc = [test(model, test_loader, device)]
+        ood_acc = test_c_cifar(model, base_c_path, corruptions, preprocess, device)
         ood_acc = iid_acc + ood_acc
         np.save(cifar10_accuracies_path, np.array(ood_acc))
     
     ######################## COMPUTE H-DISTANCE ########################
     if config.algorithm == "H-distance":
-        cifar10_h_distances_loc = os.path.join(cifar10_path, "cifar10_h_distances.npy")
+        cifar10_h_distances_loc = os.path.join(cifar10_path, "cifar10_h_dist_pre.npy")
         cifar10_h_distances_path = Path(cifar10_h_distances_loc)
         if not cifar10_h_distances_path.is_file():
-            h_dis = H_distance('CIFAR10', preprocess, n_epochs=10, device=device)
+            h_dis = H_distance('CIFAR10', preprocess, n_epochs=10, device=device, pretrained_model=model)
             h_distances = h_dis.distances_cifar10c(train_data, base_c_path, corruptions)
             h_distances = np.array(h_distances)
             np.save(cifar10_h_distances_path, h_distances)
 
     ######################## COMPUTE LABELWISE H-DISTANCE ########################
     if config.algorithm == "Labelwise-H-distance":
-        cifar10_labelwise_h_distances_loc = os.path.join(cifar10_path, "cifar10_labelwise_h_distances.npy")
+        cifar10_labelwise_h_distances_loc = os.path.join(cifar10_path, "cifar10_l_h_dist_pre.npy")
         cifar10_labelwise_h_distances_path = Path(cifar10_labelwise_h_distances_loc)
         if not cifar10_labelwise_h_distances_path.is_file():
-            extended_h = Labelwise_H_distance('CIFAR10', preprocess, id_label_fraction=0.5, ood_label_fraction=0.1, n_epochs=10, device=device)
+            extended_h = Labelwise_H_distance('CIFAR10', preprocess, id_label_fraction=0.5, ood_label_fraction=0.1, n_epochs=10, device=device, pretrained_model=model)
             divergence_matrices = extended_h.divergences_cifar10c(train_data, base_c_path, corruptions)
-            divergence_matrices_path = Path(os.path.join(cifar10_path, "divergence_matrices_cifar10"))
+            divergence_matrices_path = Path(os.path.join(cifar10_path, "divergence_matrices_cifar10_pretrained"))
             np.save(divergence_matrices_path, divergence_matrices)
             labelwise_h_distances = distances_c(divergence_matrices)
             np.save(cifar10_labelwise_h_distances_path, labelwise_h_distances)

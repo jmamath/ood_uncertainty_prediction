@@ -159,6 +159,58 @@ def estimate_target_risk(dataloader, architecture, regressor, device):
     return np.array(threshold_final).mean()
 
 
+def estimate_c_imagenet(net, regressor, batch_size, directories, preprocess, device):
+  """
+    This function use the regressor to compute a threshold estimating the accuracy on a given dataset.
+  We return both the accuracy and the estimation, to show to the user if the estimation is close to the real accuracy. It is specific to the
+  MNIST and MNIST-C database
+
+    Parameters
+    ----------
+    net : torch model
+        torch model trained on a source domain
+    regressor : torch model
+        this model predict the expected accuracy based on logits
+    batch_size : Int
+        the batch size is important because it should match the input size of the regressor
+    corruption_dir : list[Path]
+        a list of path to each of the corrupted dataset in the MNIST-C database
+    corruptions : list[string]
+        a list with the name of every corruption
+    preprocess : torch transforms
+        to be applied on each corrupted dataset, so that it match training condition
+    device : str
+        whether to run on the CPU or the GPU.
+
+    Returns
+    -------
+    corruption_accs : list[float]
+        the list of accuracies comnputed on each corrupted domain
+    corruption_est : list[float]
+        the list of estimated accuracies computed on each corrupted domain
+    """
+  corruption_accs = []
+  corruption_est = []
+  directories.pop("train")
+  for name, directory in directories.items():
+    data = np.load(directories[name] + "/images.npy")
+    targets = torch.LongTensor(np.load(directories[name] + "/labels.npy")).squeeze()
+    corrupted_data = MyData(data, targets, "IMAGENET", preprocess)
+
+    test_loader = torch.utils.data.DataLoader(
+        corrupted_data,
+        batch_size,
+        shuffle=True)
+
+    test_loss, test_acc = test(net, test_loader, device)
+    test_est = estimate_target_risk(test_loader, net, regressor, device)
+    corruption_accs.append(test_acc)
+    corruption_est.append(test_est)
+    print('{}\n\tTest Loss {:.3f} | Test acc {:.3f} | Estimate acc {:.3f}'.format(
+        name, test_loss, test_acc, test_est))
+  return corruption_accs, corruption_est
+
+
 def estimate_c_cifar(net, regressor, batch_size, base_path, corruptions, preprocess, device):
   """
     This function use the regressor to compute a threshold estimating the accuracy on a given dataset.
@@ -192,12 +244,10 @@ def estimate_c_cifar(net, regressor, batch_size, base_path, corruptions, preproc
   corruption_accs = []
   corruption_est = []
   for corruption in corruptions:
-    # Reference to original data is mutated
     data = np.load(base_path + corruption + '.npy')
     targets = torch.LongTensor(np.load(base_path + 'labels.npy')).squeeze()
     corrupted_data = MyData(data, targets, "CIFAR10", preprocess)
 
-    # import pdb; pdb.set_trace()
     test_loader = torch.utils.data.DataLoader(
         corrupted_data,
         batch_size,
@@ -208,7 +258,7 @@ def estimate_c_cifar(net, regressor, batch_size, base_path, corruptions, preproc
     corruption_accs.append(test_acc)
     corruption_est.append(test_est)
     print('{}\n\tTest Loss {:.3f} | Test acc {:.3f} | Estimate acc {:.3f}'.format(
-        corruption, test_loss, 100 * test_acc, test_est))
+        corruption, test_loss, test_acc, test_est))
   return corruption_accs, corruption_est
 
 def estimate_c_mnist(net, regressor, batch_size, corruption_dir, corruptions, preprocess, device):
@@ -258,5 +308,5 @@ def estimate_c_mnist(net, regressor, batch_size, corruption_dir, corruptions, pr
     corruption_accs.append(test_acc)
     corruption_est.append(test_est)
     print('{}\n\tTest Loss {:.3f} | Test acc {:.3f} | Estimate acc {:.3f}'.format(
-        corruption, test_loss, 100 * test_acc, test_est))
+        corruption, test_loss, test_acc, test_est))
   return corruption_accs, corruption_est

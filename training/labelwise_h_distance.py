@@ -11,12 +11,14 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 import torch.nn as nn
+from torchvision import models
 from training.utils import MyData, evaluate_model, train_model
+import copy
 
 ######################## LABELWISE H-DISTANCE ########################
 
 class Labelwise_H_distance:
-    def __init__(self, dataset_name, preprocess, id_label_fraction, ood_label_fraction, n_epochs, device):
+    def __init__(self, dataset_name, preprocess, id_label_fraction, ood_label_fraction, n_epochs, device, pretrained_model=None):
         """
         Class to compute the Labelwise H-ditance
 
@@ -42,6 +44,7 @@ class Labelwise_H_distance:
         self.ood_label_fraction = ood_label_fraction
         self.n_epochs = n_epochs
         self.device = device
+        self.pretrained_model = pretrained_model
 
     def filter_label(self, dataset, label_to_keep, label_fraction):
       """
@@ -113,7 +116,7 @@ class Labelwise_H_distance:
     def proximal_A_distance(self, train_data, test_data):
       """
       This function mainly learns to distinguish two different datasets with the training set and report its evaluation
-      on the unseen test set
+      on the unseen test set. If the class has a pretrained model, then we will only learn the last fully connected layer
       """
       # We simply train a classifier to distinguish between datasets for 10 epochs
       train_loader = DataLoader(train_data, batch_size=512, shuffle=True)
@@ -121,14 +124,42 @@ class Labelwise_H_distance:
       # import pdb; pdb.set_trace()
       # Training
       if self.dataset_name == "CIFAR10":
-          model = CifarResNet(BasicBlock, [2,2,2]).to(self.device)
+          if self.pretrained_model == None:
+              model = CifarResNet(BasicBlock, [2,2,2], num_classes=2).to(self.device)
+              optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+          else:
+              model = self.prepare_pretrained_model()
+              optimizer = torch.optim.Adam(model.fc.parameters(), lr=0.01)
       if self.dataset_name == "MNIST":
-          model = LeNet5().to(self.device)
-      optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+          if self.pretrained_model == None:
+              model = LeNet5(num_classes=2).to(self.device)
+              optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+          else:
+              model = self.prepare_pretrained_model()
+              optimizer = torch.optim.Adam(model.fc.parameters(), lr=0.01)
+      if self.dataset_name == "IMAGENET":
+          if self.pretrained_model == None:
+              model = models.resnet50().to(self.device)
+              num_ftrs = model.fc.in_features
+              model.fc = nn.Linear(num_ftrs, 2).to(self.device)
+              optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+          else:
+              model = self.prepare_pretrained_model()
+              optimizer = torch.optim.Adam(model.fc.parameters(), lr=0.01)
       crit = nn.CrossEntropyLoss()
       _, _ = train_model(train_loader, model, crit, optimizer, None, self.n_epochs, self.device)
-      proximal_distance = evaluate_model(model, test_loader, self.device)      
+      proximal_distance = evaluate_model(model, test_loader, self.device)
       return proximal_distance
+  
+    def prepare_pretrained_model(self):
+        """ Prepare model for transfer learning """
+        model = copy.deepcopy(self.pretrained_model)
+        for param in model.parameters():
+            param.requires_grad = False    
+        # Parameters of newly constructed modules have requires_grad=True by default
+        num_ftrs = model.fc.in_features
+        model.fc = nn.Linear(num_ftrs, 2).to(self.device)
+        return model
     
     def compute_labeled_proxy_distance(self, A_k, B_m):
       """
@@ -159,6 +190,25 @@ class Labelwise_H_distance:
       return distance_matrix
     
     # The following function are specific to datasets because those come with different database organisations
+    
+    def divergences_imagenet_c(self, source_data, directories):
+      """
+      Compute the h-distance between the original data and every corrupted dataset.
+      We need to have a list with the all the divergence matrices including source vs source
+      This will allow us to compute all the distances from the source
+      """
+      divergence_matrices = []
+      directories.pop("train")
+      for name, directory in directories.items():
+        data = np.load(directories[name] + "/images.npy")
+        targets = torch.LongTensor(np.load(directories[name] + "/labels.npy")).squeeze()
+        corrupted_data = MyData(data, targets, self.dataset_name, self.preprocess)
+        # import pdb; pdb.set_trace()
+        divergence_matrix = self.compute_labeled_matrix_proxy_distance(source_data, corrupted_data, source_data.num_class)
+        divergence_matrices.append(divergence_matrix)
+        # np.save("{}".format(corruption), h_distance)
+        print("divergence matrix for {}  computed".format(name))
+      return divergence_matrices 
     
     def divergences_cifar10c(self, source_data, base_path, corruptions):
       """

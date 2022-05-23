@@ -13,10 +13,11 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import copy
+from torchvision import models
 
 ######################## H-DISTANCE ########################
 class H_distance:
-    def __init__(self, dataset_name, preprocess, n_epochs, device, pretrained_model=None):
+    def __init__(self, dataset_name, preprocess, n_epochs, device, batch_size=512, pretrained_model=None):
         """
         Class to compute the Labelwise H-ditance
 
@@ -31,12 +32,13 @@ class H_distance:
         device : string
             whether to use the cpu or the gpu
 
-        """
-        self.pretrained_model = pretrained_model
+        """        
         self.dataset_name = dataset_name
         self.preprocess = preprocess
-        self.n_epochs = n_epochs
+        self.n_epochs = n_epochs        
         self.device = device
+        self.batch_size = batch_size
+        self.pretrained_model = pretrained_model
     
     def prepare_data(self, dataA, dataB):
       """
@@ -73,11 +75,11 @@ class H_distance:
     def proximal_A_distance(self, train_data, test_data):
       """
       This function mainly learns to distinguish two different datasets with the training set and report its evaluation
-      on the unseen test set
+      on the unseen test set. If the class has a pretrained model, then we will only learn the last fully connected layer
       """
       # We simply train a classifier to distinguish between datasets for 10 epochs
-      train_loader = DataLoader(train_data, batch_size=512, shuffle=True)
-      test_loader =  DataLoader(test_data, batch_size=512, shuffle=True)
+      train_loader = DataLoader(train_data, batch_size=self.batch_size, shuffle=True)
+      test_loader =  DataLoader(test_data, batch_size=self.batch_size, shuffle=True)
       # import pdb; pdb.set_trace()
       # Training
       if self.dataset_name == "CIFAR10":
@@ -94,12 +96,22 @@ class H_distance:
           else:
               model = self.prepare_pretrained_model()
               optimizer = torch.optim.Adam(model.fc.parameters(), lr=0.01)
+      if self.dataset_name == "IMAGENET":
+          if self.pretrained_model == None:
+              model = models.resnet50().to(self.device)
+              num_ftrs = model.fc.in_features
+              model.fc = nn.Linear(num_ftrs, 2).to(self.device)
+              optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+          else:
+              model = self.prepare_pretrained_model()
+              optimizer = torch.optim.Adam(model.fc.parameters(), lr=0.01)
       crit = nn.CrossEntropyLoss()
       _, _ = train_model(train_loader, model, crit, optimizer, None, self.n_epochs, self.device)
       proximal_distance = evaluate_model(model, test_loader, self.device)
       return proximal_distance
   
     def prepare_pretrained_model(self):
+        """ Prepare model for transfer learning """
         model = copy.deepcopy(self.pretrained_model)
         for param in model.parameters():
             param.requires_grad = False    
@@ -121,6 +133,25 @@ class H_distance:
 
     
     # The following function are specific to datasets because those come with different database organisations
+    
+    def distances_imagenet_c(self, source_data, directories):
+      """
+      Compute the h-distance between the original data and every corrupted dataset.
+      We need to have a list with the all the divergence matrices including source vs source
+      This will allow us to compute all the distances from the source
+      """
+      h_distances = []
+      directories.pop("train")
+      for name, directory in directories.items():
+        data = np.load(directories[name] + "/images.npy")
+        targets = torch.LongTensor(np.load(directories[name] + "/labels.npy")).squeeze()
+        corrupted_data = MyData(data, targets, self.dataset_name, self.preprocess)
+        # import pdb; pdb.set_trace()
+        h_distance = self.compute_proxy_distance(source_data, corrupted_data)
+        h_distances.append(h_distance)
+        # np.save("{}".format(corruption), h_distance)
+        print("h-distance for {}  computed".format(name))
+      return h_distances 
     
     def distances_cifar10c(self, source_data, base_path, corruptions):
       """

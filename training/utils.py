@@ -46,9 +46,13 @@ class MyData(Dataset):
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image, this allow preprocessing specific to all dataset to be applied
         if self.dataset_name == "CIFAR10":
+            # import pdb; pdb.set_trace()
             X = Image.fromarray(X)
         if self.dataset_name == "MNIST":
             X = Image.fromarray(X.squeeze())
+        if self.dataset_name == "IMAGENET":
+            # import pdb; pdb.set_trace()
+            X = Image.fromarray(X)
         if self.preprocess:
             X = self.preprocess(X)        
         # Load data and get label
@@ -162,8 +166,27 @@ def test(net, test_loader, device):
 #         corruption, test_loss, 100 - 100. * test_acc))
 #   return corruption_accs
 
+def test_imagenet_multidomain(net, directories, preprocess, device):
+  """Evaluate network on given corrupted dataset."""
+  corruption_accs = []
+  directories.pop("train")
+  for name, directory in directories.items():  
+    data = np.load(directories[name] + "/images.npy")
+    targets = torch.LongTensor(np.load(directories[name] + "/labels.npy")).squeeze()
+    corrupted_data = MyData(data, targets, "IMAGENET", preprocess)
+    
+    test_loader = torch.utils.data.DataLoader(
+        corrupted_data,
+        batch_size=64,
+        shuffle=True)
 
-def test_c_cifar(net, base_path, corruptions, preprocess):
+    test_loss, test_acc = test(net, test_loader, device)
+    corruption_accs.append(test_acc)
+    print('{}\n\tTest Loss {:.3f} | Test Error {:.3f}'.format(
+        name, test_loss, 100 - 100. * test_acc))
+  return corruption_accs
+
+def test_c_cifar(net, base_path, corruptions, preprocess, device):
   """Evaluate network on given corrupted dataset."""
   corruption_accs = []
   for corruption in corruptions:
@@ -171,7 +194,7 @@ def test_c_cifar(net, base_path, corruptions, preprocess):
     data = np.load(base_path + corruption + '.npy')
     # data = torch.FloatTensor(data).permute(0,3,2,1)
     targets = torch.LongTensor(np.load(base_path + 'labels.npy'))
-    corrupted_data = MyData(data, targets, preprocess)
+    corrupted_data = MyData(data, targets, "CIFAR10", preprocess)
 
     # import pdb; pdb.set_trace()
     test_loader = torch.utils.data.DataLoader(
@@ -179,27 +202,27 @@ def test_c_cifar(net, base_path, corruptions, preprocess):
         batch_size=128,
         shuffle=True)
 
-    test_loss, test_acc = test(net, test_loader)
+    test_loss, test_acc = test(net, test_loader, device)
     corruption_accs.append(test_acc)
     print('{}\n\tTest Loss {:.3f} | Test Error {:.3f}'.format(
         corruption, test_loss, 100 - 100. * test_acc))
   return corruption_accs
 
-def test_c_mnist(net, corruption_dir, corruptions):
+def test_c_mnist(net, corruption_dir, corruptions, preprocess, device):
   """Evaluate network on given corrupted dataset."""
   corruption_accs = []
   for directory, corruption in zip(corruption_dir, corruptions):  
     data = np.load(directory + "/test_images.npy")
     data = torch.FloatTensor(data).permute(0,3,2,1)
     targets = torch.LongTensor(np.load(directory + "/test_labels.npy")).squeeze()
-    corrupted_data = MyData(data, targets)
+    corrupted_data = MyData(data, targets, "MNIST", preprocess)
 
     test_loader = torch.utils.data.DataLoader(
         corrupted_data,
         batch_size=512,
         shuffle=True)
 
-    test_loss, test_acc = test(net, test_loader)
+    test_loss, test_acc = test(net, test_loader, device)
     corruption_accs.append(test_acc)
     print('{}\n\tTest Loss {:.3f} | Test Error {:.3f}'.format(
         corruption, test_loss, 100 - 100. * test_acc))

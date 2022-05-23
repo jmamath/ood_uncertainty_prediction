@@ -70,12 +70,12 @@ def main():
     mnist_accuracies_path = Path(mnist_accuracies_loc)
     if not mnist_accuracies_path.is_file():
         print("Computing accuracies on corrupted domains...")
-        ood_acc = test_c_mnist(model, corruption_dir, corruptions)
+        ood_acc = test_c_mnist(model, corruption_dir, corruptions, preprocess, device)
         np.save(mnist_accuracies_path, np.array(ood_acc))
     
     ######################## COMPUTE H-DISTANCE ########################
     if config.algorithm == "H-distance":
-        mnist_h_distances_loc = os.path.join(mnist_path, "mnist_h_distances_pretrained.npy")
+        mnist_h_distances_loc = os.path.join(mnist_path, "mnist_h_dist_pre.npy")
         mnist_h_distances_path = Path(mnist_h_distances_loc)
         if not mnist_h_distances_path.is_file():
             h_dis = H_distance('MNIST', preprocess, n_epochs=10, device=device, pretrained_model=model)
@@ -84,12 +84,12 @@ def main():
 
     ######################## COMPUTE LABELWISE H-DISTANCE ########################
     if config.algorithm == "Labelwise-H-distance":
-        mnist_labelwise_h_distances_loc = os.path.join(mnist_path, "mnist_labelwise_h_distances.npy")
+        mnist_labelwise_h_distances_loc = os.path.join(mnist_path, "mnist_l_h_dist_pre.npy")
         mnist_labelwise_h_distances_path = Path(mnist_labelwise_h_distances_loc)
         if not mnist_labelwise_h_distances_path.is_file():
-            extended_h = Labelwise_H_distance('MNIST', preprocess, id_label_fraction=0.5, ood_label_fraction=0.1, n_epochs=10, device=device)
+            extended_h = Labelwise_H_distance('MNIST', preprocess, id_label_fraction=0.5, ood_label_fraction=0.1, n_epochs=10, device=device, pretrained_model=model)
             divergence_matrices = extended_h.divergences_mnist_c(train_data, corruption_dir, corruptions)       
-            divergence_matrices_path = Path(os.path.join(mnist_path, "divergence_matrices_mnist"))
+            divergence_matrices_path = Path(os.path.join(mnist_path, "divergence_matrices_mnist_pretrained"))
             np.save(divergence_matrices_path, divergence_matrices)
             labelwise_h_distances = distances_c(divergence_matrices)
             np.save(mnist_labelwise_h_distances_path, labelwise_h_distances)

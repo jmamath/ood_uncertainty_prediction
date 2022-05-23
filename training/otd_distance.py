@@ -8,6 +8,7 @@ Created on Mon May  9 07:47:10 2022
 import numpy as np
 import torch
 from training.utils import MyData
+from torchvision import transforms as T
 
 def get_device():
     if torch.cuda.is_available():
@@ -22,15 +23,52 @@ from otdd.pytorch.distance import DatasetDistance
 
 # Instantiate distance
 
-def get_distance(src_dataset, target_dataset):
+def get_distance(src_dataset, target_dataset, maxsamples = 1000):
     dist = DatasetDistance(src_dataset ,target_dataset,
                            inner_ot_method = 'exact',
                            debiased_loss = True,
                            p = 2, entreg = 1e-1,
                            device='cuda')
 
-    d = dist.distance(maxsamples = 1000)
+    d = dist.distance(maxsamples = maxsamples)
     return d
+
+
+# src = MyData(data, targets, "IMAGENET", preprocess)
+# tgt = = MyData(data4, targets, "IMAGENET", preprocess)
+
+def compute_otdd_specific(source_data, dataset_size, directories, name, preprocess, device):
+  """
+  compute the OTDD from source data to every corrupted data in MNIST-C
+  """
+  # Reference to original data is mutated
+  data = np.load(directories[name] + "/images.npy")
+  targets = torch.LongTensor(np.load(directories[name] + "/labels.npy")).squeeze()
+  corrupted_data = MyData(data[:dataset_size], targets, "IMAGENET", preprocess)
+    
+  maxsamples = min(1000, len(data))
+  otdd = get_distance(source_data, corrupted_data, maxsamples).item()
+  print('{} OTDD: {}'.format(name, otdd))
+  return otdd
+
+# compute_otdd_specific(test_data, 5000, directories, "art", preprocess, device)
+
+def compute_otdd_imagenet(source_data, dataset_size, directories, preprocess, device):
+  """
+  compute the OTDD from source data to every corrupted data in MNIST-C
+  """
+  otdd = []
+  directories.pop("train")
+  for name, directory in directories.items():
+    # Reference to original data is mutated
+    data = np.load(directories[name] + "/images.npy")
+    targets = torch.LongTensor(np.load(directories[name] + "/labels.npy")).squeeze()
+    corrupted_data = MyData(data[:dataset_size], targets, "IMAGENET", preprocess)
+    
+    maxsamples = min(1000, len(data))
+    otdd.append(get_distance(source_data, corrupted_data, maxsamples).item())
+    print('{} OTDD: {}'.format(name, otdd[-1]))
+  return otdd
 
 def compute_otdd_cifar(source_data, dataset_size, base_path, corruptions, preprocess, device):
   """

@@ -18,7 +18,7 @@ from pathlib import Path
 def normalize(data):
     return (data - data.min())/ (data.max() - data.min())
 
-def plot_distance_to_acc(distance, accuracies, plot_name):
+def plot_distance_to_acc(accuracies, distance, plot_name):
     gap = np.abs(accuracies-accuracies[0])
     sns.regplot(x=normalize(distance), y=gap)
     plt.ylim([0,1])
@@ -28,7 +28,7 @@ def plot_distance_to_acc(distance, accuracies, plot_name):
     # plt.savefig("{}".format(plot_name), dpi=200)
     plt.show()
 
-def plot_atc_differences(estimation, accuracies, plot_name):
+def plot_atc_differences(accuracies, estimation, plot_name):
     """Because estimations were designed to approximate accuracies in percent between 0 and 100
     we need to"""
     gap = np.abs(accuracies-accuracies[0])
@@ -48,23 +48,38 @@ mnist_labelwise_h_distances = np.load("mnist_labelwise_h_distances.npy")
 mnist_otdd = np.load("mnist_otdd.npy")
 mnist_atc = np.load("mnist_atc.npy")
 
-cifar10_accuracies = np.load("cifar10_accuracies.npy")
+accuracies = np.load("cifar10_accuracies.npy")
 cifar10_h_distances = np.load("cifar10_h_distances.npy")
 cifar10_labelwise_h_distances = np.load("cifar10_labelwise_h_distances.npy")
 cifar10_otdd = np.load("cifar10_otdd.npy")
 cifar10_atc = np.load("cifar10_atc.npy")
 
+def load_results(dataset, names):
+    results = {}
+    for name in names:
+        results[name] = np.load(dataset + "_" + name + ".npy")
+    return results
+
+pretrained_vs_not = load_results("cifar10", ["h_dist", "h_dist_pre",
+                                                 "l_h_dist", "l_h_dist_pre"])
+
+def plot_all_results(accuracies, data):
+    for key in data.keys():
+        plot_distance_to_acc(accuracies, data[key], key)
+
+plot_all_results(accuracies, pretrained_vs_not)        
 
 
-plot_distance_to_acc(mnist_h_distances, mnist_accuracies, "mnist_h_distance_plot")
-plot_distance_to_acc(-mnist_labelwise_h_distances, mnist_accuracies, "mnist_labelwise_h_distance_plot")
-plot_distance_to_acc(mnist_otdd, mnist_accuracies, "mnist_otdd")
-plot_atc_differences(mnist_atc, mnist_accuracies, "mnist_atc_plot")
 
-plot_distance_to_acc(cifar10_h_distances, cifar10_accuracies, "cifar10_h_distances")
-plot_distance_to_acc(cifar10_labelwise_h_distances, cifar10_accuracies, "cifar10_labelwise_h_distances")
-plot_distance_to_acc(cifar10_otdd, cifar10_accuracies, "cifar10_otdd")
-plot_atc_differences(cifar10_atc, cifar10_accuracies, "cifar10_atc")
+plot_distance_to_acc(mnist_accuracies, mnist_h_distances, "mnist_h_distance_plot")
+plot_distance_to_acc(mnist_accuracies, -mnist_labelwise_h_distances, "mnist_labelwise_h_distance_plot")
+plot_distance_to_acc(mnist_accuracies, mnist_otdd, "mnist_otdd")
+plot_atc_differences(mnist_accuracies, mnist_atc, "mnist_atc_plot")
+
+plot_distance_to_acc(mnist_accuracies, cifar10_h_distances, "cifar10_h_distances")
+plot_distance_to_acc(mnist_accuracies, cifar10_labelwise_h_distances, "cifar10_labelwise_h_distances")
+plot_distance_to_acc(mnist_accuracies, cifar10_otdd, "cifar10_otdd")
+plot_atc_differences(mnist_accuracies, cifar10_atc, "cifar10_atc")
 
 
 from sklearn.model_selection import cross_val_score
@@ -80,7 +95,7 @@ def evaluate_model(X, y, model):
 	return np.absolute(scores)
 
 # plot the dataset and the model's line of best fit
-def plot_best_fit(X, y, model):
+def plot_best_fit(X, y, model, name):
 	# fut the model on all data
 	model.fit(X, y)
 	# plot the dataset
@@ -90,17 +105,33 @@ def plot_best_fit(X, y, model):
 	yaxis = model.predict(xaxis.reshape((len(xaxis), 1)))
 	plt.plot(xaxis, yaxis, color='r')
 	# show the plot
-	plt.title(type(model).__name__)
+	plt.title(name)
 	plt.show()
 
 model = LinearRegression()
 model = HuberRegressor()
 # evaluate model
+
+def get_prediction(results, accuracy, model):
+    predictions = {}
+    for key in results.keys():
+        predictions[key] = evaluate_model(results[key][:,np.newaxis], accuracy, model)
+    return predictions
+
+pretrained_vs_not_prediction = get_prediction(pretrained_vs_not, accuracies, model)
+
 h_distance_prediction = evaluate_model(cifar10_h_distances[:,np.newaxis], cifar10_accuracies, model)
 labelwise_h_distance_prediction = evaluate_model(-cifar10_labelwise_h_distances[:,np.newaxis], cifar10_accuracies, model)
 otdd_prediction = evaluate_model(cifar10_otdd[:,np.newaxis], cifar10_accuracies, model)
 atc_prediction = evaluate_model(cifar10_atc[:,np.newaxis], cifar10_accuracies, model)
 
+def display_results(predictions, accuracy, results, model):
+    for key in results.keys():
+        print('{} Prediction - Mean MAE: {} {}'.format(key, np.mean(predictions[key]), np.std(predictions[key])))
+        # plot the line of best fit
+        plot_best_fit(results[key][:,np.newaxis], accuracy, model, key)
+
+display_results(pretrained_vs_not_prediction, accuracies, pretrained_vs_not, model)
 
 print('H-distance Prediction - Mean MAE: %.3f (%.3f)' % (np.mean(h_distance_prediction), np.std(h_distance_prediction)))
 # plot the line of best fit
@@ -124,10 +155,46 @@ results["Labelwise H-distance"] = labelwise_h_distance_prediction
 results["OTDD"] = otdd_prediction
 results["ATC"] = atc_prediction
 
-
 # plot model performance for comparison
 plt.boxplot(results.values(), labels=results.keys(), showmeans=True)
 plt.show()
+
+
+plt.boxplot(pretrained_vs_not_prediction.values(), labels=pretrained_vs_not_prediction.keys(), showmeans=True)
+plt.ylabel("Mean Absolute Error")
+plt.title("Effect of pretraining for H related distances")
+plt.show()
+plt.savefig("cifar10_pretrained_h_related_distances", dpi=300)
+
+## Subexperiment, determine whether or not to pretrained on H-distance
+# previously I forgot to specify to the model to have 2 class output, so it used to have 10 class. I checked 2 things
+# whether or not changing the number of output class have an effect, whether or not pretraining have an effect
+# it seems that pretraining works better, but is isn't as fast. Why ?
+mnist_h_10class = np.load("mnist_h_distances_10classes.npy")
+mnist_h_2class = np.load("mnist_h_distances.npy")
+mnist_h_pretrained = np.load("mnist_h_distances_pretrained.npy")
+
+plt.plot(mnist_h_10class/100, label="10 class")
+plt.plot(mnist_h_2class, label="2 class")
+plt.plot(mnist_h_pretrained, label="pretrained")
+plt.legend()
+
+plot_distance_to_acc(mnist_h_10class/100, mnist_accuracies, "10 class")
+plot_distance_to_acc(mnist_h_2class, mnist_accuracies, "2 class")
+plot_distance_to_acc(mnist_h_pretrained, mnist_accuracies, "pretrained")
+
+model = LinearRegression()
+h_distance_10class = evaluate_model(mnist_h_10class[:,np.newaxis], mnist_accuracies, model)
+h_distance_2class= evaluate_model(mnist_h_2class[:,np.newaxis], mnist_accuracies, model)
+h_distance_pretrained = evaluate_model(mnist_h_pretrained[:,np.newaxis], mnist_accuracies, model)
+
+print('H-distance 10 class - Mean MAE: %.3f (%.3f)' % (np.mean(h_distance_10class), np.std(h_distance_10class)))
+plot_best_fit(mnist_h_10class[:,np.newaxis], mnist_accuracies, model)
+print('H-distance 2 class - Mean MAE: %.3f (%.3f)' % (np.mean(h_distance_2class), np.std(h_distance_2class)))
+plot_best_fit(mnist_h_2class[:,np.newaxis], mnist_accuracies, model)
+print('H-distance pretrained- Mean MAE: %.3f (%.3f)' % (np.mean(h_distance_pretrained), np.std(h_distance_pretrained)))
+plot_best_fit(mnist_h_pretrained[:,np.newaxis], mnist_accuracies, model)
+
     
 ######################## VISUALIZE DIVERGENCE MATRICES ########################
 
