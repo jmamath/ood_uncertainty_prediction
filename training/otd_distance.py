@@ -39,7 +39,7 @@ def get_distance(src_dataset, target_dataset, maxsamples = 1000):
 
 def compute_otdd_specific(source_data, dataset_size, directories, name, preprocess, device):
   """
-  compute the OTDD from source data to every corrupted data in MNIST-C
+  compute the OTDD from source data to a specific target data
   """
   # Reference to original data is mutated
   data = np.load(directories[name] + "/images.npy")
@@ -55,7 +55,7 @@ def compute_otdd_specific(source_data, dataset_size, directories, name, preproce
 
 def compute_otdd_imagenet(source_data, dataset_size, directories, preprocess, device):
   """
-  compute the OTDD from source data to every corrupted data in MNIST-C
+  compute the OTDD from source data to every corrupted data in IMAGENET
   """
   otdd = []
   directories.pop("train")

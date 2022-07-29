@@ -41,45 +41,34 @@ def plot_atc_differences(accuracies, estimation, plot_name):
     # plt.savefig("{}".format(plot_name), dpi=200)
     plt.show()
     
-    
-mnist_accuracies = np.load("mnist_accuracies.npy")
-mnist_h_distances = np.load("mnist_h_distances.npy")
-mnist_labelwise_h_distances = np.load("mnist_labelwise_h_distances.npy")
-mnist_otdd = np.load("mnist_otdd.npy")
-mnist_atc = np.load("mnist_atc.npy")
-
-accuracies = np.load("cifar10_accuracies.npy")
-cifar10_h_distances = np.load("cifar10_h_distances.npy")
-cifar10_labelwise_h_distances = np.load("cifar10_labelwise_h_distances.npy")
-cifar10_otdd = np.load("cifar10_otdd.npy")
-cifar10_atc = np.load("cifar10_atc.npy")
 
 def load_results(dataset, names):
+    curr_path = os.getcwd()
+    data_path = os.path.join(curr_path, dataset)
     results = {}
+    accuracies = np.load(os.path.join(data_path, dataset + "_" + "accuracies" + ".npy"))
     for name in names:
-        results[name] = np.load(dataset + "_" + name + ".npy")
-    return results
+        name_path = os.path.join(data_path, dataset + "_" + name + ".npy")
+        results[name] = np.load(name_path)
+    return results, accuracies
 
-pretrained_vs_not = load_results("cifar10", ["h_dist", "h_dist_pre",
-                                                 "l_h_dist", "l_h_dist_pre"])
+
+cifar10_results, cifar10_accuracies = load_results("cifar10", ["h_dist_pre", "atc", "otdd"])
+mnist_results, mnist_accuracies =  load_results("mnist", ["h_dist_pre", "atc", "otdd"])
+imagenet_results, imagenet_accuracies =  load_results("imagenet", ["h_dist_pre", "atc", "otdd"])
+
+
 
 def plot_all_results(accuracies, data):
     for key in data.keys():
         plot_distance_to_acc(accuracies, data[key], key)
 
-plot_all_results(accuracies, pretrained_vs_not)        
+plot_all_results(cifar10_accuracies, cifar10_results)     
+plot_all_results(mnist_accuracies, mnist_results)    
+plot_all_results(imagenet_accuracies, imagenet_results)       
 
 
 
-plot_distance_to_acc(mnist_accuracies, mnist_h_distances, "mnist_h_distance_plot")
-plot_distance_to_acc(mnist_accuracies, -mnist_labelwise_h_distances, "mnist_labelwise_h_distance_plot")
-plot_distance_to_acc(mnist_accuracies, mnist_otdd, "mnist_otdd")
-plot_atc_differences(mnist_accuracies, mnist_atc, "mnist_atc_plot")
-
-plot_distance_to_acc(mnist_accuracies, cifar10_h_distances, "cifar10_h_distances")
-plot_distance_to_acc(mnist_accuracies, cifar10_labelwise_h_distances, "cifar10_labelwise_h_distances")
-plot_distance_to_acc(mnist_accuracies, cifar10_otdd, "cifar10_otdd")
-plot_atc_differences(mnist_accuracies, cifar10_atc, "cifar10_atc")
 
 
 from sklearn.model_selection import cross_val_score
@@ -118,53 +107,38 @@ def get_prediction(results, accuracy, model):
         predictions[key] = evaluate_model(results[key][:,np.newaxis], accuracy, model)
     return predictions
 
-pretrained_vs_not_prediction = get_prediction(pretrained_vs_not, accuracies, model)
+mnist_prediction = get_prediction(mnist_results, mnist_accuracies, model)
+cifar10_prediction = get_prediction(cifar10_results, cifar10_accuracies, model)
+imagenet_prediction = get_prediction(imagenet_results, imagenet_accuracies, model)
 
-h_distance_prediction = evaluate_model(cifar10_h_distances[:,np.newaxis], cifar10_accuracies, model)
-labelwise_h_distance_prediction = evaluate_model(-cifar10_labelwise_h_distances[:,np.newaxis], cifar10_accuracies, model)
-otdd_prediction = evaluate_model(cifar10_otdd[:,np.newaxis], cifar10_accuracies, model)
-atc_prediction = evaluate_model(cifar10_atc[:,np.newaxis], cifar10_accuracies, model)
 
 def display_results(predictions, accuracy, results, model):
     for key in results.keys():
-        print('{} Prediction - Mean MAE: {} {}'.format(key, np.mean(predictions[key]), np.std(predictions[key])))
+        mean = np.mean(predictions[key])
+        std = np.std(predictions[key])
+        print('{} Prediction - Mean MAE: {} +- {}'.format(key, np.round(mean,2), np.round(std,2)))
         # plot the line of best fit
         plot_best_fit(results[key][:,np.newaxis], accuracy, model, key)
 
-display_results(pretrained_vs_not_prediction, accuracies, pretrained_vs_not, model)
-
-print('H-distance Prediction - Mean MAE: %.3f (%.3f)' % (np.mean(h_distance_prediction), np.std(h_distance_prediction)))
-# plot the line of best fit
-plot_best_fit(cifar10_h_distances[:,np.newaxis], cifar10_accuracies, model)
-
-print('Labelwise H-distance Prediction - Mean MAE: %.3f (%.3f)' % (np.mean(labelwise_h_distance_prediction), np.std(labelwise_h_distance_prediction)))
-# plot the line of best fit
-plot_best_fit(cifar10_labelwise_h_distances[:,np.newaxis], cifar10_accuracies, model)
-
-print('OTDD Prediction - Mean MAE: %.3f (%.3f)' % (np.mean(otdd_prediction), np.std(otdd_prediction)))
-# plot the line of best fit
-plot_best_fit(cifar10_otdd[:,np.newaxis], cifar10_accuracies, model)
-
-print('ATC Prediction - Mean MAE: %.3f (%.3f)' % (np.mean(atc_prediction), np.std(atc_prediction)))
-# plot the line of best fit
-plot_best_fit(cifar10_atc[:,np.newaxis], cifar10_accuracies, model)
-
-results = dict()
-results["H-distance"] = h_distance_prediction
-results["Labelwise H-distance"] = labelwise_h_distance_prediction
-results["OTDD"] = otdd_prediction
-results["ATC"] = atc_prediction
-
-# plot model performance for comparison
-plt.boxplot(results.values(), labels=results.keys(), showmeans=True)
-plt.show()
+display_results(mnist_prediction, mnist_accuracies, mnist_results, model)
+display_results(cifar10_prediction, cifar10_accuracies, cifar10_results, model)
+display_results(imagenet_prediction, imagenet_accuracies, imagenet_results, model)
 
 
-plt.boxplot(pretrained_vs_not_prediction.values(), labels=pretrained_vs_not_prediction.keys(), showmeans=True)
+plt.boxplot(mnist_prediction.values(), labels=mnist_prediction.keys(), showmeans=True)
 plt.ylabel("Mean Absolute Error")
-plt.title("Effect of pretraining for H related distances")
-plt.show()
-plt.savefig("cifar10_pretrained_h_related_distances", dpi=300)
+plt.title("MNIST")
+plt.savefig("mnist_predictions", dpi=300)
+
+plt.boxplot(cifar10_prediction.values(), labels=cifar10_prediction.keys(), showmeans=True)
+plt.ylabel("Mean Absolute Error")
+plt.title("CIFAR-10")
+plt.savefig("cifar10_predictions", dpi=300)
+
+plt.boxplot(imagenet_prediction.values(), labels=imagenet_prediction.keys(), showmeans=True)
+plt.ylabel("Mean Absolute Error")
+plt.title("ImageNet")
+plt.savefig("imagenet_predictions", dpi=300)
 
 ## Subexperiment, determine whether or not to pretrained on H-distance
 # previously I forgot to specify to the model to have 2 class output, so it used to have 10 class. I checked 2 things

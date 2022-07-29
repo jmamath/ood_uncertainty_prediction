@@ -21,6 +21,7 @@ from training.labelwise_h_distance import Labelwise_H_distance, distances_c
 from training.h_distance import H_distance
 from training.atc import linearRegression, train_regressor, estimate_c_cifar, estimate_target_risk
 from training.otd_distance import compute_otdd_cifar
+from training.gde import compute_gde_cifar10
 # def get_device():
 #     if torch.cuda.is_available():
 #         device = 'cuda'
@@ -32,7 +33,7 @@ from training.otd_distance import compute_otdd_cifar
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--algorithm', required=True, choices=["H-distance", "ATC", "Labelwise-H-distance", "OTDD"])
+    parser.add_argument('--algorithm', required=True, choices=["H-distance", "ATC", "Labelwise-H-distance", "OTDD", "GDE"])
     parser.add_argument('--device', type=int, default=0)
     config = parser.parse_args()    
     
@@ -132,6 +133,28 @@ def main():
         if not cifar10_otdd_path.is_file():
             otdd = compute_otdd_cifar(test_data, 5000, base_c_path, corruptions, preprocess, device)
             np.save(cifar10_otdd_path, otdd)
+    
+    ######################## COMPUTE GENERALIZED DISAGREEMENT EQUALITY ########################
+    if config.algorithm == "GDE":
+        cifar10_gde_loc = os.path.join(cifar10_path, "cifar10_gde.npy")
+        cifar10_gde_path = Path(cifar10_gde_loc)
+        if not cifar10_gde_path.is_file():
+            print("Train a second model...")  
+            model = CifarResNet(BasicBlock, [2,2,2]).to(device)
+            optimizer = torch.optim.Adam(model.parameters())
+            n_epochs=10
+            criterion = nn.CrossEntropyLoss()
+            loss, acc = train_model(train_loader, model, criterion, optimizer, None, n_epochs, device)
+            print("Saving the model...")
+            torch.save(model.state_dict(),  os.path.join(cifar10_path,"cifar10_model_gde"))
+            # Evaluate the disagreement between the two models
+            model_a = CifarResNet(BasicBlock, [2,2,2]).to(device)
+            model_b = CifarResNet(BasicBlock, [2,2,2]).to(device)
+            model_a.load_state_dict(torch.load(os.path.join(cifar10_path,"cifar10_model")))
+            model_b.load_state_dict(torch.load(os.path.join(cifar10_path,"cifar10_model_gde")))
+            
+            gde = compute_gde_cifar10(model_a, model_b, test_loader, base_c_path, corruptions, preprocess, device)
+            np.save(cifar10_gde_path,gde)            
             
 
 

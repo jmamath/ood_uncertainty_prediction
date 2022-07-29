@@ -20,11 +20,12 @@ from training.labelwise_h_distance import Labelwise_H_distance, distances_c
 from training.h_distance import H_distance
 from training.atc import linearRegression, train_regressor, estimate_c_mnist
 from training.otd_distance import compute_otdd_mnist
+from training.gde import compute_gde_mnist
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--algorithm', required=True, choices=["H-distance", "ATC", "Labelwise-H-distance", "OTDD"])
+    parser.add_argument('--algorithm', required=True, choices=["H-distance", "ATC", "Labelwise-H-distance", "OTDD", "GDE"])
     parser.add_argument('--device', type=int, default=0)
     config = parser.parse_args()    
     
@@ -121,6 +122,28 @@ def main():
         if not mnist_otdd_path.is_file():
             otdd = compute_otdd_mnist(test_data, 5000, corruption_dir, corruptions, preprocess, device)
             np.save(mnist_otdd_path,otdd)
+    
+    ######################## COMPUTE GENERALIZED DISAGREEMENT EQUALITY ########################
+    if config.algorithm == "GDE":
+        mnist_gde_loc = os.path.join(mnist_path, "mnist_gde.npy")
+        mnist_gde_path = Path(mnist_gde_loc)
+        if not mnist_gde_path.is_file():
+            print("Train a second model...")        
+            model = LeNet5().to(device)
+            optimizer = torch.optim.Adam(model.parameters())
+            n_epochs=10
+            criterion = nn.CrossEntropyLoss()
+            loss, acc = train_model(train_loader, model, criterion, optimizer, None, n_epochs, device)
+            print("Saving the model...")
+            torch.save(model.state_dict(),  os.path.join(mnist_path,"mnist_model_gde"))
+            # Evaluate the disagreement between the two models
+            model_a = LeNet5().to(device)
+            model_b = LeNet5().to(device)
+            model_a.load_state_dict(torch.load(os.path.join(mnist_path,"mnist_model")))
+            model_b.load_state_dict(torch.load(os.path.join(mnist_path,"mnist_model_gde")))
+            
+            gde = compute_gde_mnist(model_a, model_b, corruption_dir, corruptions, preprocess, device)
+            np.save(mnist_gde_path,gde)
 
 
 if __name__=='__main__':

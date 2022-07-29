@@ -20,15 +20,17 @@ from training.labelwise_h_distance import Labelwise_H_distance, distances_c
 from training.h_distance import H_distance
 from training.atc import linearRegression, train_regressor, estimate_target_risk, estimate_c_imagenet
 from training.otd_distance import compute_otdd_imagenet
+from training.gde import compute_gde_imagenet
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--algorithm', required=True, choices=["H-distance", "ATC", "Labelwise-H-distance", "OTDD"])
+    parser.add_argument('--algorithm', required=True, choices=["H-distance", "ATC", "Labelwise-H-distance", "OTDD", "GDE"])
     parser.add_argument('--device', type=int, default=0)
     config = parser.parse_args()    
     
     # Set device
     device = torch.device("cuda:" + str(config.device)) if torch.cuda.is_available() else torch.device("cpu")
+    # device_bis = torch.device("cuda:" + str(config.device)) if torch.cuda.is_available() else torch.device("cpu")
     print(device)
     ######################## TRAINING PROCESS ######################## 
     preprocess = T.Compose(
@@ -118,8 +120,8 @@ def main():
             print("learning a threshold function ...")
             _, loss_mae = train_regressor(regressor, model, val_loader, n_epochs, crit, optimizer, device)            
             _, corruption_estimation = estimate_c_imagenet(model, regressor, regressor_input, directories, preprocess, device)            
-            iid_est = estimate_target_risk(test_loader, model, regressor, device)
-            corruption_estimation = [iid_est] + corruption_estimation
+            # iid_est = estimate_target_risk(test_loader, model, regressor, device)
+            # corruption_estimation = [iid_est] + corruption_estimation
             np.save(imagenet_atc_path, corruption_estimation)
             
     ######################## COMPUTE OPTIMAL TRANSPORT DATASET DISTANCE ########################
@@ -129,6 +131,40 @@ def main():
         if not imagenet_otdd_path.is_file():
             otdd = compute_otdd_imagenet(test_data, 5000, directories, preprocess, device)
             np.save(imagenet_otdd_path, otdd)
+
+    ######################## COMPUTE GENERALIZED DISAGREEMENT EQUALITY ########################
+    if config.algorithm == "GDE":
+        imagenet_gde_loc = os.path.join(imagenet_path, "imagenet_gde.npy")
+        imagenet_gde_path = Path(imagenet_gde_loc)
+        imagenet_model_bis_loc = os.path.join(imagenet_gde_path, "imagenet_model_gde")    
+        imagenet_model_bis_path = Path(imagenet_model_bis_loc)        
+        if not imagenet_gde_path.is_file():
+            if not imagenet_model_path.is_file():
+                print("Train a second model...")  
+                model = models.resnet50(pretrained=True).to(device)
+                num_ftrs = model.fc.in_features
+                model.fc = nn.Linear(num_ftrs, 23).to(device)
+                optimizer = torch.optim.Adam(model.parameters())
+                n_epochs=10
+                criterion = nn.CrossEntropyLoss()
+                loss, acc = train_model(train_loader, model, criterion, optimizer, None, n_epochs, device)
+                print("Saving the model...")
+                torch.save(model.state_dict(),  os.path.join(imagenet_path,"imagenet_model_gde"))
+            else:
+                pass
+            # Evaluate the disagreement between the two models
+            model_a = models.resnet50().to(device)
+            num_ftrs = model_a.fc.in_features
+            model_a.fc = nn.Linear(num_ftrs, 23).to(device)
+            model_b = models.resnet50().to(device)
+            num_ftrs = model_b.fc.in_features
+            model_b.fc = nn.Linear(num_ftrs, 23).to(device)
+            model_a.load_state_dict(torch.load(os.path.join(imagenet_path,"imagenet_model")))
+            model_b.load_state_dict(torch.load(os.path.join(imagenet_path,"imagenet_model_gde")))
+            
+            gde = compute_gde_imagenet(model_a, model_b, directories, preprocess, device)
+            np.save(imagenet_gde_path,gde)            
+            
 
 if __name__=='__main__':
     main()
