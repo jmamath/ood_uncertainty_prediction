@@ -21,6 +21,7 @@ from training.h_distance import H_distance
 from training.atc import linearRegression, train_regressor, estimate_target_risk, estimate_c_imagenet
 from training.otd_distance import compute_otdd_imagenet
 from training.gde import compute_gde_imagenet
+from training.temperature_scaling import ModelWithTemperature
 
 def main():
     parser = argparse.ArgumentParser()
@@ -72,6 +73,9 @@ def main():
         num_ftrs = model.fc.in_features
         model.fc = nn.Linear(num_ftrs, 23).to(device)
         model.load_state_dict(torch.load(os.path.join(imagenet_path,"imagenet_model")))
+        print("Calibrating the model...")
+        scaled_model = ModelWithTemperature(model)
+        scaled_model.set_temperature(test_loader, device)
 
     
     imagenet_accuracies_loc = os.path.join(imagenet_path, "imagenet_accuracies.npy")
@@ -108,7 +112,7 @@ def main():
         imagenet_atc_loc = os.path.join(imagenet_path, "imagenet_atc.npy")
         imagenet_atc_path = Path(imagenet_atc_loc)
         if not imagenet_atc_path.is_file():
-            for param in model.parameters():
+            for param in scaled_model.parameters():
                 param.requires_grad = False
             # Make sure that the regressor input dimension match the dataloader batch size
             regressor_input = 256       
@@ -118,8 +122,8 @@ def main():
             crit = nn.L1Loss()
             n_epochs = 20
             print("learning a threshold function ...")
-            _, loss_mae = train_regressor(regressor, model, val_loader, n_epochs, crit, optimizer, device)            
-            _, corruption_estimation = estimate_c_imagenet(model, regressor, regressor_input, directories, preprocess, device)            
+            _, loss_mae = train_regressor(regressor, scaled_model, val_loader, n_epochs, crit, optimizer, device)            
+            _, corruption_estimation = estimate_c_imagenet(scaled_model, regressor, regressor_input, directories, preprocess, device)            
             # iid_est = estimate_target_risk(test_loader, model, regressor, device)
             # corruption_estimation = [iid_est] + corruption_estimation
             np.save(imagenet_atc_path, corruption_estimation)

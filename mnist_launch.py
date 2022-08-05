@@ -21,6 +21,7 @@ from training.h_distance import H_distance
 from training.atc import linearRegression, train_regressor, estimate_c_mnist
 from training.otd_distance import compute_otdd_mnist
 from training.gde import compute_gde_mnist
+from training.temperature_scaling import ModelWithTemperature
 
 
 def main():
@@ -45,6 +46,7 @@ def main():
     data = np.load(identity_dir + "/test_images.npy")
     targets = torch.LongTensor(np.load(identity_dir + "/test_labels.npy")).squeeze()
     test_data = MyData(data, targets, "MNIST", preprocess)
+    test_loader = DataLoader(test_data, batch_size=512, shuffle=True)
     
     # 1. Verify if there a trained model already exist
     curr_path = os.getcwd()
@@ -65,6 +67,9 @@ def main():
         print("Loading the model...")
         model = LeNet5().to(device)
         model.load_state_dict(torch.load(os.path.join(mnist_path,"mnist_model")))
+        print("Calibrating the model...")
+        scaled_model = ModelWithTemperature(model)
+        scaled_model.set_temperature(test_loader, device)
 
     
     mnist_accuracies_loc = os.path.join(mnist_path, "mnist_accuracies.npy")
@@ -100,7 +105,7 @@ def main():
         mnist_atc_loc = os.path.join(mnist_path, "mnist_atc.npy")
         mnist_atc_path = Path(mnist_atc_loc)
         if not mnist_atc_path.is_file():
-            for param in model.parameters():
+            for param in scaled_model.parameters():
                 param.requires_grad = False
 
             # Make sure that the regressor input dimension match the dataloader batch size
@@ -111,8 +116,8 @@ def main():
             crit = nn.L1Loss()
             n_epochs = 20
             print("learning a threshold function ...")
-            _, loss_mae = train_regressor(regressor, model, val_loader, n_epochs, crit, optimizer, device)            
-            _, corruption_estimation = estimate_c_mnist(model, regressor, regressor_input, corruption_dir, corruptions, preprocess, device)            
+            _, loss_mae = train_regressor(regressor, scaled_model, val_loader, n_epochs, crit, optimizer, device)            
+            _, corruption_estimation = estimate_c_mnist(scaled_model, regressor, regressor_input, corruption_dir, corruptions, preprocess, device)            
             np.save(mnist_atc_path, corruption_estimation)
     
     ######################## COMPUTE OPTIMAL TRANSPORT DATASET DISTANCE ########################

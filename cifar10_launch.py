@@ -22,6 +22,7 @@ from training.h_distance import H_distance
 from training.atc import linearRegression, train_regressor, estimate_c_cifar, estimate_target_risk
 from training.otd_distance import compute_otdd_cifar
 from training.gde import compute_gde_cifar10
+from training.temperature_scaling import ModelWithTemperature
 # def get_device():
 #     if torch.cuda.is_available():
 #         device = 'cuda'
@@ -72,7 +73,9 @@ def main():
         print("Loading the model...")
         model = CifarResNet(BasicBlock, [2,2,2]).to(device)
         model.load_state_dict(torch.load(os.path.join(cifar10_path,"cifar10_model")))
-
+        print("Calibrating the model...")
+        scaled_model = ModelWithTemperature(model)
+        scaled_model.set_temperature(test_loader, device)
     
     cifar10_accuracies_loc = os.path.join(cifar10_path, "cifar10_accuracies.npy")
     cifar10_accuracies_path = Path(cifar10_accuracies_loc)
@@ -110,7 +113,7 @@ def main():
         cifar10_atc_loc = os.path.join(cifar10_path, "cifar10_atc.npy")
         cifar10_atc_path = Path(cifar10_atc_loc)
         if not cifar10_atc_path.is_file():
-            for param in model.parameters():
+            for param in scaled_model.parameters():
                 param.requires_grad = False
             # Make sure that the regressor input dimension match the dataloader batch size
             regressor_input = 256       
@@ -120,9 +123,9 @@ def main():
             crit = nn.L1Loss()
             n_epochs = 20
             print("learning a threshold function ...")
-            _, loss_mae = train_regressor(regressor, model, val_loader, n_epochs, crit, optimizer, device)            
-            _, corruption_estimation = estimate_c_cifar(model, regressor, regressor_input, base_c_path, corruptions, preprocess, device)            
-            iid_est = estimate_target_risk(test_loader, model, regressor, device)
+            _, loss_mae = train_regressor(regressor, scaled_model, val_loader, n_epochs, crit, optimizer, device)            
+            _, corruption_estimation = estimate_c_cifar(scaled_model, regressor, regressor_input, base_c_path, corruptions, preprocess, device)            
+            iid_est = estimate_target_risk(test_loader, scaled_model, regressor, device)
             corruption_estimation = [iid_est] + corruption_estimation
             np.save(cifar10_atc_path, corruption_estimation)
             
