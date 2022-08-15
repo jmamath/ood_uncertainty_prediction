@@ -54,7 +54,7 @@ def main():
     train_loader = DataLoader(train_data, batch_size=512, shuffle=True)
     test_loader = DataLoader(test_data, batch_size=512, shuffle=True)
     
-    # 1. Verify if there a trained model already exist
+    # 1. Verify if a trained model already exist
     curr_path = os.getcwd()
     cifar10_path = os.path.join(curr_path, "cifar10")
     

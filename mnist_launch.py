@@ -48,7 +48,7 @@ def main():
     test_data = MyData(data, targets, "MNIST", preprocess)
     test_loader = DataLoader(test_data, batch_size=512, shuffle=True)
     
-    # 1. Verify if there a trained model already exist
+    # 1. Verify if a trained model already exist
     curr_path = os.getcwd()
     mnist_path = os.path.join(curr_path, "mnist")
     
@@ -66,7 +66,7 @@ def main():
     else:
         print("Loading the model...")
         model = LeNet5().to(device)
-        model.load_state_dict(torch.load(os.path.join(mnist_path,"mnist_model")))
+        model.load_state_dict(torch.load(mnist_model_path))
         print("Calibrating the model...")
         scaled_model = ModelWithTemperature(model)
         scaled_model.set_temperature(test_loader, device)
@@ -144,7 +144,7 @@ def main():
             # Evaluate the disagreement between the two models
             model_a = LeNet5().to(device)
             model_b = LeNet5().to(device)
-            model_a.load_state_dict(torch.load(os.path.join(mnist_path,"mnist_model")))
+            model_a.load_state_dict(torch.load(mnist_model_path))
             model_b.load_state_dict(torch.load(os.path.join(mnist_path,"mnist_model_gde")))
             
             gde = compute_gde_mnist(model_a, model_b, corruption_dir, corruptions, preprocess, device)

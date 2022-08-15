@@ -50,7 +50,7 @@ def main():
     targets = torch.LongTensor(np.load(directories["val"] + "/labels.npy")).squeeze()
     test_data = MyData(data, targets, "IMAGENET", preprocess)
     test_loader = DataLoader(test_data, batch_size=64, shuffle=True)
-    # 1. Verify if there a trained model already exist
+    # 1. Verify if a trained model already exist
     curr_path = os.getcwd()
     imagenet_path = os.path.join(curr_path, "imagenet")
     

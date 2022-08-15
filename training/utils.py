@@ -91,8 +91,11 @@ def train_model(train_loader, model, criterion, optimizer, scheduler, n_epochs, 
     # to track the average acc per epoch as the model trains
     avg_train_acc = [] 
     # switch to train mode
+
+    ###################
+    # train the model #
+    ################### 
     model.train()
-    # for epoch in range(1, n_epochs + 1):
     with trange(n_epochs) as pbar:
       for epoch in pbar:
         for i, (x, target) in enumerate(train_loader):
@@ -126,6 +129,156 @@ def train_model(train_loader, model, criterion, optimizer, scheduler, n_epochs, 
     
     return avg_train_log_likelihood, avg_train_acc
 
+def train_model_earlystopping(train_loader, valid_loader, model, criterion, optimizer, scheduler, patience, model_location, n_epochs, device):
+
+    # to track the training log likelihood as the model trains
+    train_log_likelihood = []
+    # to track the validation log likelihood as the model trains
+    valid_log_likelihood = []
+    # to track the average training log likelihood per epoch as the model trains
+    avg_train_log_likelihood = []
+    # to track the average validation log likelihood per epoch as the model trains
+    avg_valid_log_likelihood = [] 
+    
+    # to track the training accuracy as the model trains
+    train_accuracies = []
+    # to track the validation loss as the model trains
+    valid_accuracies = []
+    # to track the average training loss per epoch as the model trains
+    avg_train_accuracies = []
+    # to track the average validation loss per epoch as the model trains
+    avg_valid_accuracies = [] 
+    
+    # initialize the early_stopping object    
+    early_stopping = EarlyStopping(metric="val_loss", patience=patience, location=model_location, verbose=True)
+
+    ###################
+    # train the model #
+    ################### 
+    model.train()
+    with trange(n_epochs) as pbar:
+      for epoch in pbar:
+        for i, (x, target) in enumerate(train_loader):
+            target = target.to(device)
+            x = x.to(device)
+            # clear the gradients of all optimized variables
+            optimizer.zero_grad()
+            # import pdb; pdb.set_trace()
+            output = model(x)
+            loss = criterion(output, target)
+            # measure accuracy and record loss
+            loss.backward()
+            optimizer.step()
+            if scheduler is not None:
+                scheduler.step()
+             # record training log likelihood, KL and accuracy
+            train_log_likelihood.append(loss.item())   
+            acc = compute_accuracy(output, target).cpu().numpy() 
+            train_accuracies.append(acc)
+        # Get descriptive statistics of the training log likelihood, the training accuracy and the KL over MC_sample                       
+        # Store the descriptive statistics to display the learning behavior 
+        avg_train_log_likelihood.append(np.average(train_log_likelihood))
+        avg_train_accuracies.append(np.average(train_accuracies))
+        
+        ######################    
+        # validate the model #
+        ######################    
+        with torch.no_grad():          
+          for j, (x, target) in enumerate(valid_loader,1):
+              target = target.to(device)
+              x = x.to(device)
+              # calculate the loss and accuracy
+              output = model(x)
+              loss = criterion(output, target)  
+              acc = compute_accuracy(output, target).cpu().numpy()
+              # record validation loss
+              valid_log_likelihood.append(loss.item())
+              valid_accuracies.append(acc) 
+                
+       # calculate average loss, accuracie and whateve the divergence tracked over one epoch of validation, 
+        # the average are stored in a separate variable        
+        avg_valid_log_likelihood.append(np.average(valid_log_likelihood))
+        avg_valid_accuracies.append(np.average(valid_accuracies))
+        
+        
+        epoch_len = len(str(n_epochs))
+
+        # print training/validation statistics 
+        pbar.set_postfix(train_log_likelihood=train_log_likelihood[-1],
+                         valid_log_likelihood=valid_log_likelihood[-1], 
+                         train_acc=train_accuracies[-1], 
+                         valid_acc=valid_accuracies[-1])                
+        
+        # early_stopping needs the validation loss to check if it has decresed, 
+        # and if it has, it will make a checkpoint of the current model
+        early_stopping(valid_log_likelihood[-1], model)
+
+        # clear lists to track next epoch
+        train_log_likelihood = []
+        valid_log_likelihood = []
+        train_accuracies = []  
+        valid_accuracies = []
+        
+        if early_stopping.early_stop:
+            print("Early stopping")
+            break 
+    
+    return avg_train_log_likelihood, avg_train_accuracies
+
+
+
+# @title Early Stopping class
+class EarlyStopping:
+    """Early stops the training if validation loss doesn't improve after a given patience."""
+    def __init__(self, metric="val_loss", patience=7, location=None, verbose=False, delta=0):
+        """
+        Args:
+            patience (int): How long to wait after last time validation loss improved.
+                            Default: 7
+            verbose (bool): If True, prints a message for each validation loss improvement. 
+                            Default: False
+            delta (float): Minimum change in the monitored quantity to qualify as an improvement.
+                            Default: 0
+            metric (string): the metric to track, validation loss or validation accuracy
+        """
+        self.patience = patience
+        self.verbose = verbose
+        self.counter = 0
+        self.best_score = None
+        self.early_stop = False
+        self.metric_min = np.Inf
+        self.metric = metric
+        self.delta = delta
+        self.location = location
+
+    def __call__(self, metric, model):
+        # if self.metric == "val_loss":        
+        score = -metric
+        # else:
+        #   score = metric
+        # 1st iteration
+        if self.best_score is None:
+            self.best_score = score
+            self.save_checkpoint(metric, self.location, model)
+        elif score < self.best_score + self.delta:
+            self.counter += 1
+            print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_score = score
+            self.save_checkpoint(metric, self.location, model)
+            self.counter = 0
+
+    def save_checkpoint(self, metric, location, model):
+        '''Saves model when validation loss decrease.
+        Each model carries a name, so we use it to store the states'''
+        
+        if self.verbose:
+            print(f'{self.metric} decreased ({self.metric_min:.6f} --> {metric:.6f}).  Saving model ...')
+        torch.save(model.state_dict(), location)
+        self.metric_min = metric
+
 
 ######################## EVALUATION FUNCTIONS ########################
 
@@ -145,26 +298,6 @@ def test(net, test_loader, device):
 
   return total_loss / len(test_loader.dataset), total_correct / len(
       test_loader.dataset)
-
-
-# def test_c_cifar(net, test_data, base_path, corruptions):
-#   """Evaluate network on given corrupted dataset."""
-#   corruption_accs = []
-#   for corruption in corruptions:
-#     # Reference to original data is mutated
-#     test_data.data = np.load(base_path + corruption + '.npy')
-#     test_data.targets = torch.LongTensor(np.load(base_path + 'labels.npy'))
-#     # import pdb; pdb.set_trace()
-#     test_loader = torch.utils.data.DataLoader(
-#         test_data,
-#         batch_size=128,
-#         shuffle=True)
-
-#     test_loss, test_acc = test(net, test_loader)
-#     corruption_accs.append(test_acc)
-#     print('{}\n\tTest Loss {:.3f} | Test Error {:.3f}'.format(
-#         corruption, test_loss, 100 - 100. * test_acc))
-#   return corruption_accs
 
 def test_imagenet_multidomain(net, directories, preprocess, device):
   """Evaluate network on given corrupted dataset."""
