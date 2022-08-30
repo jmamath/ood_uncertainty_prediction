@@ -16,13 +16,15 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from training.utils import train_model_earlystopping
-from camelyon17.camelyon17_preprocessing import camelyon17_v1, get_hospital_data, metadata_df, Camelyon17Dataset, test_augmentations, test_nodes, compute_gde_camelyon_augmentations, compute_gde_camelyon_nodes
+from camelyon17.camelyon17_preprocessing import camelyon17_v1, get_hospital_data, metadata_df, Camelyon17Dataset, test_augmentations, test_nodes, compute_gde_camelyon_augmentations, compute_gde_camelyon_nodes, test_augmentations_all_severity, compute_gde_camelyon_augmentations_all_severity
 from sklearn.model_selection import train_test_split
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--training_node', type=int, required=True, choices=[0,1,2,3,4])
+    parser.add_argument('--rebalanced', type=bool, default=False)
+    parser.add_argument('--all_severity', type=bool, default=False)
     parser.add_argument('--device', type=int, default=0)
     config = parser.parse_args()    
     
@@ -68,11 +70,14 @@ def main():
     camelyon17_accuracies_path = Path(camelyon17_accuracies_loc)
     if not camelyon17_accuracies_path.is_file():
         print("Computing accuracies on corrupted domains...")
-        node_acc = test_nodes(model, config.training_node, device)
-        ood_acc = test_augmentations(model, X_test, y_test, device) 
-        node_acc.update(ood_acc)
-        node_acc = pd.Series(node_acc)
-        node_acc.to_csv(camelyon17_accuracies_path)
+        if config.all_severity:
+            ood_acc = test_augmentations_all_severity(model, X_test, y_test, device) 
+        else:
+            ood_acc = test_augmentations(model, X_test, y_test, device) 
+        node_acc = test_nodes(model, config.training_node, device, rebalanced=config.rebalanced)
+        ood_acc.update(node_acc)
+        ood_acc = pd.Series(ood_acc)
+        ood_acc.to_csv(camelyon17_accuracies_path)
         
     ######################## COMPUTE GENERALIZED DISAGREEMENT EQUALITY ########################
     camelyon17_gde_loc = os.path.join(camelyon17_path, "camelyon17_gde_node_{}".format(config.training_node))
@@ -93,14 +98,16 @@ def main():
             # torch.save(model.state_dict(), camelyon17_model_bis_path)
         else:
             pass
-        # Evaluate the disagreement between the two models
+        print("Evaluate the disagreement between the two models")
         model_a = models.densenet121(num_classes=2).to(device)
         model_b = models.densenet121(num_classes=2).to(device)
         model_a.load_state_dict(torch.load(camelyon17_model_loc))
         model_b.load_state_dict(torch.load(camelyon17_model_bis_loc))
-        
-        gde_aug = compute_gde_camelyon_augmentations(model_a, model_b, X_test, y_test, device)
-        gde_node = compute_gde_camelyon_nodes(model_a, model_b, config.training_node, device)
+        if config.all_severity:
+            gde_aug = compute_gde_camelyon_augmentations_all_severity(model_a, model_b, X_test, y_test, device)
+        else:
+            gde_aug = compute_gde_camelyon_augmentations(model_a, model_b, X_test, y_test, device)
+        gde_node = compute_gde_camelyon_nodes(model_a, model_b, config.training_node, device, rebalanced=config.rebalanced)
         gde_aug.update(gde_node)
         gde_aug = pd.Series(gde_aug)
         gde_aug.to_csv(camelyon17_gde_path)

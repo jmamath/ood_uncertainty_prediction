@@ -17,6 +17,7 @@ import training.augmentations as augmentations
 from training.utils import test
 from sklearn.model_selection import train_test_split
 from training.gde import compute_gde_loader
+import random
 
 
 def process_results_node(node):
@@ -46,7 +47,7 @@ def get_hospital_data(metadata, hospital):
 
 class Camelyon17Dataset(Dataset):
   'Characterizes a dataset for PyTorch'
-  def __init__(self, data_dir, targets, input_array, perturbation=None, num_class=2):
+  def __init__(self, data_dir, targets, input_array, perturbation=None, num_class=2, severity=3):
         """"Initialization, here display serves to show an example
         if false, it means that we intend to feed the data to a model"""
         self.targets = targets
@@ -54,6 +55,7 @@ class Camelyon17Dataset(Dataset):
         self.input_array = input_array
         self.perturbation = perturbation
         self.num_class = num_class        
+        self.severity = severity
 
   def __len__(self):
         'Denotes the total number of samples'
@@ -67,11 +69,11 @@ class Camelyon17Dataset(Dataset):
             X = transforms.ToTensor()(X) 
         else: 
             if isinstance(X, Image.Image) and (self.perturbation in augmentations.augmentations_kornia):
-                X = self.perturbation(transforms.ToTensor()(X), 3)
+                X = self.perturbation(transforms.ToTensor()(X), self.severity)
             elif isinstance(X, torch.Tensor) and (self.perturbation in augmentations.augmentations_pil):
-                X = self.perturbation(transforms.functional.to_pil_image(X), 3)
+                X = self.perturbation(transforms.functional.to_pil_image(X), self.severity)
             else:
-                X = self.perturbation(X, 3)
+                X = self.perturbation(X, self.severity)
             if isinstance(X, torch.Tensor):
                 pass
             else:
@@ -125,7 +127,27 @@ def get_target_nodes(current_node):
     
     
 def test_augmentations(net, X_test, y_test, device):
-  """Evaluate network on given corrupted dataset."""
+  """
+    Evaluate the model trained on the current node on on many 25 original data augmentations incluing
+    augmentations that have no severity factors
+
+    Parameters
+    ----------
+    net : TYPE
+        DESCRIPTION.
+    X_test : List
+        List of filenames associated to images.
+    y_test : torch Tensor
+        Labels associated with the images.
+    device : String
+        GPU's name.
+
+    Returns
+    -------
+    corruption_accs : dict
+        A dictionary with all the accuracies computed on each corruption.
+
+    """
   corruption_accs = {}
   for corruption in augmentations.augmentations_all:
     corruption_name = corruption.__name__
@@ -140,15 +162,78 @@ def test_augmentations(net, X_test, y_test, device):
   return corruption_accs
 
 
-def test_nodes(net, current_node, device):
-  """Evaluate network on given corrupted dataset."""
+
+def test_augmentations_all_severity(net, X_test, y_test, device):
+  """
+    Evaluate the model trained on the current node on 13 dataset corruptions each having 5 different degree of 
+    severity. The goal is to quantify the information gain by using distinct corruptions.
+      
+    Parameters
+    ----------
+    net : torch model
+        model trained on current node.
+    X_test : List
+        List of filenames associated to images.
+    y_test : torch Tensor
+        Labels associated with the images.
+    device : String
+        GPU's name.
+
+    Returns
+    -------
+    corruption_accs : dict
+        A dictionary with all the accuracies computed on each corruption.
+
+    """
+  corruption_accs = {}
+  all_augmentations = augmentations.augmentations_kornia.copy()
+  all_augmentations.remove(augmentations.identity)
+  for corruption in all_augmentations:  
+    for severity in range(1,6):
+        corruption_name = corruption.__name__ + "_" + str(severity)        
+        # Reference to original data is mutated
+        dataset = Camelyon17Dataset(camelyon17_v1, y_test, X_test, corruption, severity=severity)
+        loader = DataLoader(dataset, batch_size=32)    
+        test_loss, test_acc = test(net, loader, device)
+        corruption_accs[corruption_name] = test_acc
+        print('{}\n\tTest Loss {:.3f} | Test Error {:.3f}'.format(
+        corruption_name, test_loss, 100 - 100. * test_acc))
+  return corruption_accs
+
+
+def test_nodes(net, current_node, device, rebalanced=False):
+  """
+    Evaluate the model trained on the current node on all other nodes
+
+    Parameters
+    ----------
+    net : torch.model
+        The model trained on current node
+    current_node : Int
+        The training node specified in the launch function.
+    device : String
+        GPU's name.
+    rebalanced : Bool, optional
+        Whether or not we should rebalance the target node distribution according to the training node distribution. 
+        The default is False.
+
+    Returns
+    -------
+    corruption_accs : dict
+        A dictionary with all the accuracies computed on each node.
+
+    """
   corruption_accs = {}
   remaining_nodes = get_target_nodes(current_node)
   for node in remaining_nodes:
     node_name = "node_" + str(node)
     # Reference to original data is mutated
     data, label = get_hospital_data(metadata_df, node)
-    _, X_test, _, y_test = train_test_split(data, label, test_size=0.16, random_state=0)
+    if rebalanced:
+        source_distribution = get_class_distribution(current_node)
+        X_test, y_test = rebalance_data(np.array(data), label, source_distribution, proportion=0.16)
+    else:    
+        _, X_test, _, y_test = train_test_split(data, label, test_size=0.16, random_state=0)
     dataset = Camelyon17Dataset(camelyon17_v1, y_test, X_test)
     loader = DataLoader(dataset, batch_size=32)
 
@@ -157,10 +242,32 @@ def test_nodes(net, current_node, device):
     print('{}\n\tTest Loss {:.3f} | Test Error {:.3f}'.format(
         node_name, test_loss, 100 - 100. * test_acc))
   return corruption_accs
- 
-
     
 def compute_gde_camelyon_augmentations(model_a, model_b, X_test, y_test, device):
+  """
+    Compute the Generalized Disagreement Equality (GDE) of two models on many 25 original data augmentations incluing
+    augmentation that have no severity factors
+
+    Parameters
+    ----------
+    model_a : torch model
+        The first torch model trained on current node.
+    model_b : torch model
+        The second torch model trained on current node.
+    X_test : List
+        List of filenames associated to images.
+    y_test : torch Tensor
+        Labels associated with the images.
+    device : String
+        GPU's name.
+
+    Returns
+    -------
+    gde : dict
+        a dictionary with the GDE computed for each dataset corruption.
+
+    """
+
   gde = {}
   for corruption in augmentations.augmentations_all:
     corruption_name = corruption.__name__
@@ -172,20 +279,84 @@ def compute_gde_camelyon_augmentations(model_a, model_b, X_test, y_test, device)
     print('{} GDE: {}'.format(corruption_name, gde[corruption_name]))
   return gde 
 
-def compute_gde_camelyon_nodes(model_a, model_b, current_node, device):
+def compute_gde_camelyon_augmentations_all_severity(model_a, model_b, X_test, y_test, device):
+  """
+    Compute the Generalized Disagreement Equality (GDE) of two models on 13 dataset corruptions each having 5 different degree of 
+    severity. The goal is to quantify the information gain by using distinct corruptions.
+
+    Parameters
+    ----------
+    model_a : torch model
+        The first torch model trained on current node.
+    model_b : torch model
+        The second torch model trained on current node.
+    X_test : List
+        List of filenames associated to images.
+    y_test : torch Tensor
+        Labels associated with the images.
+    device : String
+        GPU's name.
+
+    Returns
+    -------
+    gde : dict
+        a dictionary with the GDE computed for each dataset corruption.
+
+  """
+  gde = {}
+  all_augmentations = augmentations.augmentations_kornia.copy()
+  all_augmentations.remove(augmentations.identity)
+  for corruption in all_augmentations:   
+    for severity in range(1,6):
+        corruption_name = corruption.__name__ + "_" + str(severity)        
+        # Reference to original data is mutated
+        dataset = Camelyon17Dataset(camelyon17_v1, y_test, X_test, corruption, severity=severity)
+        loader = DataLoader(dataset, batch_size=32)    
+        gde[corruption_name] = compute_gde_loader(model_a, model_b, loader, device)
+        print('{} GDE: {}'.format(corruption_name, gde[corruption_name]))     
+  return gde 
+
+def compute_gde_camelyon_nodes(model_a, model_b, current_node, device, rebalanced=False):
+  """
+    The function will compute the Generalized Disagreement Equality (GDE) of two models train on all unseen nodes
+
+    Parameters
+    ----------
+    model_a : torch model
+        The first torch model trained on current node.
+    model_b : torch model
+        The second torch model trained on current node.
+    current_node : Int
+        The training node specified in the launch function.
+    device : String
+        GPU's name.
+    rebalanced : Bool, optional
+        Whether or not we should rebalance the target node distribution according to the training node distribution. 
+        The default is False.
+
+    Returns
+    -------
+    gde : dict
+        a dictionary with the GDE computed on each node.
+
+    """
   gde = {}
   remaining_nodes = get_target_nodes(current_node)
   for node in remaining_nodes:
     node_name = "node_" + str(node)
-    # Reference to original data is mutated
     data, label = get_hospital_data(metadata_df, node)
-    _, X_test, _, y_test = train_test_split(data, label, test_size=0.16, random_state=0)
+    if rebalanced:
+        source_distribution = get_class_distribution(current_node)
+        X_test, y_test = rebalance_data(np.array(data), label, source_distribution, proportion=0.16)
+    else:    
+        _, X_test, _, y_test = train_test_split(data, label, test_size=0.16, random_state=0)
     dataset = Camelyon17Dataset(camelyon17_v1, y_test, X_test)
     loader = DataLoader(dataset, batch_size=32)
 
     gde[node_name] = compute_gde_loader(model_a, model_b, loader, device)
     print('{} GDE: {}'.format(node_name, gde[node_name]))
   return gde 
+
 
 def rebalance_data(target_data, target_label, source_distribution, proportion):
     """
@@ -196,8 +367,8 @@ def rebalance_data(target_data, target_label, source_distribution, proportion):
     ----------
     target_data : List
         A list of filenames related to images
-    target_label : List
-        A list of labels from the target distribution
+    target_label : torch tensor
+        A tensor of labels from the target distribution
     source_distribution : Tuple
         A binary distribution (p0,p1) with p0+p1 = 1, 0<= p0,p1 <= 1
     proportion : Float
@@ -207,8 +378,8 @@ def rebalance_data(target_data, target_label, source_distribution, proportion):
     -------
     X : List
         New list of filenemaes subsampled accordingly to the source distribution.
-    y : TYPE
-        New list of labels subsampled accordingly to the source distribution.
+    y : torch tensor
+        New tensor of labels subsampled accordingly to the source distribution.
 
     """
     p0, p1 = source_distribution
@@ -220,6 +391,7 @@ def rebalance_data(target_data, target_label, source_distribution, proportion):
     # import pdb ; pdb.set_trace()
     index_p0_target_rebalanced = np.random.choice(index_p0_target, len_p0_target)
     index_p1_target_rebalanced = np.random.choice(index_p1_target, len_p1_target)
+    # import pdb; pdb.set_trace()
     X0, y0 = target_data[index_p0_target_rebalanced], target_label[index_p0_target_rebalanced]
     X1, y1 = target_data[index_p1_target_rebalanced], target_label[index_p1_target_rebalanced]
     X = np.concatenate((X0, X1), 0)
