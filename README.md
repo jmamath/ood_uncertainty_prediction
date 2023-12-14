@@ -23,10 +23,10 @@ You can get the results by executing the following commnand to get result from M
 python mnist_launch.py --algorithm --device
 ```
 After the keyword `algorithm` you can add one of the following three algorithms:
-- `ATC`
-- `H-distance`
-- `GDE`
-- `OTDD`
+- `ATC`: Garg, Saurabh, et al. "Leveraging unlabeled data to predict out-of-distribution performance." arXiv preprint arXiv:2201.04234 (2022).
+- `H-distance`: Ben-David, Shai, et al. "Analysis of representations for domain adaptation." Advances in neural information processing systems 19 (2006).
+- `GDE`: Jiang, Yiding, et al. "Assessing generalization of SGD via disagreement." arXiv preprint arXiv:2106.13799 (2021).
+- `OTDD`: Alvarez-Melis, David, and Nicolo Fusi. "Geometric dataset distances via optimal transport." Advances in Neural Information Processing Systems 33 (2020): 21428-21439.
 
 Device count only if you know the name of your GPU, and if you have many of them
 
